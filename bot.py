@@ -5,13 +5,13 @@ import sqlite3
 from functools import wraps
 from threading import Lock, Thread
 from zoneinfo import ZoneInfo
-from flask import Flask, render_template
+from flask import Flask, jsonify, render_template, request
 import telebot
 from telebot import apihelper, types
 
 # --- НАСТРОЙКИ И ЛОГИРОВАНИЕ ---
 TOKEN = "9106912523:AAEzNfeJqGr3ZKIoi5OyTaOMpLqgDm0Idxo"
-ADMINS = [6969053096, 5956780231]
+ADMINS = [6969053096, 5956780231, 7000120396]
 BY_TZ = ZoneInfo("Europe/Minsk")
 DB_FILE = "bot_webapp_data.db"
 
@@ -24,7 +24,7 @@ log = logging.getLogger("IgrikWebAppBot")
 apihelper.proxy = None
 bot = telebot.TeleBot(TOKEN)
 
-# --- FLASK СЕРВЕР ДЛЯ WEBAPP И RAILWAY ---
+# --- FLASK СЕРВЕР ДЛЯ WEBAPP ---
 app = Flask(__name__)
 
 
@@ -36,6 +36,94 @@ def home():
 @app.route("/webapp")
 def webapp_page():
     return render_template("index.html")
+
+
+# --- API ДЛЯ МИНИ-ПРИЛОЖЕНИЯ ---
+@app.route("/api/data", methods=["GET"])
+def get_api_data():
+    user_id = request.args.get("user_id", type=int)
+    is_admin = user_id in ADMINS if user_id else False
+
+    # Получаем расписание на текущую и следующую неделю
+    today = get_now().date()
+    current_week_schedule = get_week_schedule_data(today, shift_weeks=0)
+    next_week_schedule = get_week_schedule_data(today, shift_weeks=1)
+
+    # Получаем домашку и пропуски из БД
+    with db_lock:
+        with sqlite3.connect(DB_FILE) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT * FROM homework ORDER BY date_key DESC, id DESC"
+            )
+            hw_rows = cursor.fetchall()
+            homework = [dict(row) for row in hw_rows]
+
+            cursor.execute(
+                "SELECT * FROM attendance WHERE date = ?",
+                (today.isoformat(),),
+            )
+            att_rows = cursor.fetchall()
+            attendance = [dict(row) for row in att_rows]
+
+    return jsonify({
+        "is_admin": is_admin,
+        "current_week": current_week_schedule,
+        "next_week": next_week_schedule,
+        "homework": homework,
+        "attendance": attendance,
+        "today_date": today.isoformat(),
+    })
+
+
+@app.route("/api/homework", methods=["POST"])
+def add_homework():
+    data = request.json
+    subject = data.get("subject")
+    task = data.get("task")
+    date_key = data.get("date_key", get_now().date().isoformat())
+    author = data.get("author", "Аноним")
+
+    if not subject or not task:
+        return jsonify({"status": "error", "message": "Пустые поля"})
+
+    with db_lock:
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO homework (date_key, subject, task, author) VALUES"
+                " (?, ?, ?, ?)",
+                (date_key, subject, task, author),
+            )
+            conn.commit()
+    return jsonify({"status": "success"})
+
+
+@app.route("/api/attendance", methods=["POST"])
+def set_attendance():
+    data = request.json
+    user_id = data.get("user_id")
+    user_name = data.get("user_name", "Студент")
+    status = data.get("status")  # 'yes' или 'no'
+    date_str = get_now().date().isoformat()
+
+    if not user_id or not status:
+        return jsonify({"status": "error"})
+
+    with db_lock:
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO attendance (date, user_id, user_name, status) 
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(date, user_id) DO UPDATE SET status = ?, user_name = ?
+            """,
+                (date_str, user_id, user_name, status, status, user_name),
+            )
+            conn.commit()
+    return jsonify({"status": "success"})
 
 
 def run_flask():
@@ -160,10 +248,20 @@ def init_db():
             cursor = conn.cursor()
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS homework (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
                     date_key TEXT,
                     subject TEXT,
                     task TEXT,
-                    PRIMARY KEY (date_key, subject)
+                    author TEXT
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS attendance (
+                    date TEXT,
+                    user_id INTEGER,
+                    user_name TEXT,
+                    status TEXT,
+                    PRIMARY KEY (date, user_id)
                 )
             """)
             conn.commit()
@@ -176,9 +274,28 @@ def get_now():
     return datetime.datetime.now(BY_TZ)
 
 
-def get_week_type():
-    week_number = get_now().isocalendar()[1]
+def get_week_type(target_date):
+    week_number = target_date.isocalendar()[1]
     return 1 if week_number % 2 != 0 else 0
+
+
+def get_week_schedule_data(base_date, shift_weeks=0):
+    start_of_week = base_date - datetime.timedelta(
+        days=base_date.weekday()
+    ) + datetime.timedelta(weeks=shift_weeks)
+    week_data = []
+
+    for i in range(6):  # Понедельник - Суббота
+        day_date = start_of_week + datetime.timedelta(days=i)
+        day_name = DAYS_ORDER[i]
+        w_type = get_week_type(day_date)
+        lessons = SCHEDULE.get(day_name, [[], []])[w_type]
+        week_data.append({
+            "day": day_name,
+            "date": day_date.strftime("%d.%m"),
+            "lessons": lessons,
+        })
+    return week_data
 
 
 def get_day_schedule_for_date(target_date):
@@ -187,7 +304,7 @@ def get_day_schedule_for_date(target_date):
     days_diff = (target_date - today).days
     today_index = today.weekday()
     shift_weeks = (today_index + days_diff) // 7
-    current_week_type = get_week_type()
+    current_week_type = get_week_type(today)
     target_week_type = (current_week_type + shift_weeks) % 2
     return SCHEDULE.get(day_name, [[], []])[target_week_type]
 
@@ -268,7 +385,7 @@ def handle_messages(message):
                 f"{lessons_str}"
             ),
             parse_mode="Markdown",
-            reply_markup=get_main_keyboard,
+            reply_markup=get_main_keyboard(),
         )
     elif text == "📋 Расписание на неделю":
         today = get_now().date()
