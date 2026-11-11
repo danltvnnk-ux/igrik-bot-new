@@ -1,15 +1,18 @@
 import datetime
+import html
 import logging
 import os
 import sqlite3
+import time
 from threading import Thread, Lock
 from zoneinfo import ZoneInfo
-from flask import Flask, jsonify, render_template_string, request
+
 import telebot
+from flask import Flask, jsonify, render_template_string, request
 from telebot import apihelper, types
 
 # --- НАСТРОЙКИ И ЛОГИРОВАНИЕ ---
-TOKEN = "9106912523:AAFVKhZC2epgoaVMPk4ZhPKVssZ1V1erma0"
+TOKEN = os.environ["BOT_TOKEN"]  # задайте BOT_TOKEN в переменных окружения Railway
 ADMINS = [6969053096, 5956780231, 7000120396]
 BY_TZ = ZoneInfo("Europe/Minsk")
 DB_FILE = "bot_webapp_data.db"
@@ -25,7 +28,7 @@ log = logging.getLogger("IgrikWebAppBot")
 apihelper.proxy = None
 bot = telebot.TeleBot(TOKEN)
 
-# --- ИСХОДНЫЙ ПОЛНЫЙ HTML ИНТЕРФЕЙС МИНИ-ПРИЛОЖЕНИЯ ---
+# --- HTML ИНТЕРФЕЙС МИНИ-ПРИЛОЖЕНИЯ ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="ru">
@@ -157,7 +160,7 @@ HTML_TEMPLATE = """
             if (!appData) return;
             const container = document.getElementById('schedule-container');
             const schedule = activeWeekType === 'current' ? appData.current_week : appData.next_week;
-            
+
             container.innerHTML = schedule.map(day => `
                 <div class="bg-slate-800 p-3.5 rounded-xl border border-slate-700 relative pb-11">
                     <div class="flex justify-between items-center mb-2">
@@ -184,7 +187,7 @@ HTML_TEMPLATE = """
         function openDayHwModal(fullDateStr, dayName, shortDateStr) {
             const modalTitle = document.getElementById('day-hw-modal-title');
             const container = document.getElementById('day-hw-container');
-            
+
             modalTitle.innerText = `ДЗ на ${dayName} (${shortDateStr})`;
             const filteredHw = appData.homework.filter(hw => hw.date_key === fullDateStr);
 
@@ -214,7 +217,7 @@ HTML_TEMPLATE = """
             const schedule = activeWeekType === 'current' ? appData.current_week : appData.next_week;
             const dayObj = schedule.find(d => d.day === dayName);
             currentEditingLessons = dayObj ? [...dayObj.lessons] : [];
-            
+
             document.getElementById('modal-title').innerText = `${dayName} (${activeWeekType === 'current' ? 'Текущая' : 'Следующая'})`;
             renderModalLessons();
             document.getElementById('edit-modal').classList.remove('hidden');
@@ -261,11 +264,11 @@ HTML_TEMPLATE = """
             fetch('/api/schedule', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    user_id: userId, 
-                    day: editingDay, 
-                    week_type: weekTypeNum, 
-                    lessons: currentEditingLessons.filter(l => l.trim().length > 0) 
+                body: JSON.stringify({
+                    user_id: userId,
+                    day: editingDay,
+                    week_type: weekTypeNum,
+                    lessons: currentEditingLessons.filter(l => l.trim().length > 0)
                 })
             }).then(res => res.json()).then(data => {
                 if (data.status === 'success') {
@@ -319,22 +322,7 @@ HTML_TEMPLATE = """
 </html>
 """
 
-# --- ФЛАСК И СЕРВЕР ---
-app = Flask(__name__)
-db_lock = Lock()
-
-
-@app.route("/")
-def home():
-    return "Игрик WebApp бот активен и работает 24/7!", 200
-
-
-@app.route("/webapp")
-def webapp_page():
-    return render_template_string(HTML_TEMPLATE)
-
-
-# --- ПОЛНОЕ И ПРАВИЛЬНОЕ РАСПИСАНИЕ ЭЗС 12-26 ---
+# --- ПОЛНОЕ РАСПИСАНИЕ ЭЗС 12-26 ---
 SCHEDULE = {
     "Понедельник": [
         [
@@ -430,93 +418,9 @@ DAYS_ORDER = [
     "Воскресенье",
 ]
 
-
-@app.route("/api/data", methods=["GET"])
-def get_api_data():
-    user_id = request.args.get("user_id", type=int)
-    is_admin = user_id in ADMINS if user_id else False
-
-    today = get_now().date()
-    current_week_schedule = get_week_schedule_data(today, shift_weeks=0)
-    next_week_schedule = get_week_schedule_data(today, shift_weeks=1)
-
-    with db_lock:
-        with sqlite3.connect(DB_FILE) as conn:
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT * FROM homework ORDER BY date_key DESC, id DESC"
-            )
-            hw_rows = cursor.fetchall()
-            homework = [dict(row) for row in hw_rows]
-
-    return jsonify({
-        "is_admin": is_admin,
-        "current_week": current_week_schedule,
-        "next_week": next_week_schedule,
-        "homework": homework,
-        "today_date": today.isoformat(),
-    })
-
-
-@app.route("/api/schedule", methods=["POST"])
-def update_schedule():
-    data = request.json
-    user_id = data.get("user_id")
-    if user_id not in ADMINS:
-        return jsonify({"status": "error", "message": "Нет прав админа"})
-
-    day = data.get("day")
-    week_type = data.get("week_type")
-    lessons = data.get("lessons")
-
-    if day in SCHEDULE and week_type in [0, 1]:
-        SCHEDULE[day][week_type] = lessons
-        return jsonify({"status": "success"})
-
-    return jsonify({"status": "error", "message": "Неверные данные"})
-
-
-@app.route("/api/homework", methods=["POST"])
-def add_homework():
-    data = request.json
-    subject = data.get("subject")
-    task = data.get("task")
-    date_key = data.get("date_key", get_now().date().isoformat())
-    author = data.get("author", "Аноним")
-
-    if not subject or not task:
-        return jsonify({"status": "error", "message": "Пустые поля"})
-
-    with db_lock:
-        with sqlite3.connect(DB_FILE) as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                "INSERT INTO homework (date_key, subject, task, author) VALUES"
-                " (?, ?, ?, ?)",
-                (date_key, subject, task, author),
-            )
-            conn.commit()
-    return jsonify({"status": "success"})
-
-
-def init_db():
-    with db_lock:
-        with sqlite3.connect(DB_FILE) as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS homework (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    date_key TEXT,
-                    subject TEXT,
-                    task TEXT,
-                    author TEXT
-                )
-            """)
-            conn.commit()
-
-
-init_db()
+# --- FLASK ---
+app = Flask(__name__)
+db_lock = Lock()
 
 
 def get_now():
@@ -559,90 +463,192 @@ def get_day_schedule_for_date(target_date):
     return SCHEDULE.get(day_name, [[], []])[target_week_type]
 
 
+def init_db():
+    with db_lock:
+        with sqlite3.connect(DB_FILE) as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS homework (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    date_key TEXT,
+                    subject TEXT,
+                    task TEXT,
+                    author TEXT
+                )
+            """)
+            conn.commit()
+
+
+init_db()
+
+
+@app.route("/")
+def home():
+    return "Игрик WebApp бот активен и работает 24/7!", 200
+
+
+@app.route("/webapp")
+def webapp_page():
+    return render_template_string(HTML_TEMPLATE)
+
+
+@app.route("/api/data", methods=["GET"])
+def get_api_data():
+    user_id = request.args.get("user_id", type=int)
+    is_admin = user_id in ADMINS if user_id else False
+
+    today = get_now().date()
+    current_week_schedule = get_week_schedule_data(today, shift_weeks=0)
+    next_week_schedule = get_week_schedule_data(today, shift_weeks=1)
+
+    with db_lock:
+        with sqlite3.connect(DB_FILE) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT * FROM homework ORDER BY date_key DESC, id DESC"
+            )
+            homework = [dict(row) for row in cursor.fetchall()]
+
+    return jsonify({
+        "is_admin": is_admin,
+        "current_week": current_week_schedule,
+        "next_week": next_week_schedule,
+        "homework": homework,
+        "today_date": today.isoformat(),
+    })
+
+
+@app.route("/api/schedule", methods=["POST"])
+def update_schedule():
+    data = request.get_json(silent=True) or {}
+    user_id = data.get("user_id")
+    if user_id not in ADMINS:
+        return jsonify({"status": "error", "message": "Нет прав админа"})
+
+    day = data.get("day")
+    week_type = data.get("week_type")
+    lessons = data.get("lessons")
+
+    if day in SCHEDULE and week_type in [0, 1] and isinstance(lessons, list):
+        SCHEDULE[day][week_type] = lessons
+        return jsonify({"status": "success"})
+
+    return jsonify({"status": "error", "message": "Неверные данные"})
+
+
+@app.route("/api/homework", methods=["POST"])
+def add_homework():
+    data = request.get_json(silent=True) or {}
+    subject = data.get("subject")
+    task = data.get("task")
+    date_key = data.get("date_key") or get_now().date().isoformat()
+    author = data.get("author", "Аноним")
+
+    if not subject or not task:
+        return jsonify({"status": "error", "message": "Пустые поля"})
+
+    with db_lock:
+        with sqlite3.connect(DB_FILE) as conn:
+            conn.execute(
+                "INSERT INTO homework (date_key, subject, task, author) VALUES (?, ?, ?, ?)",
+                (date_key, subject, task, author),
+            )
+            conn.commit()
+    return jsonify({"status": "success"})
+
+
+# --- КЛАВИАТУРА И ОТВЕТЫ БОТА ---
+BUTTON_ACTIONS = {
+    "📅 на сегодня": "today",
+    "📅 на завтра": "tomorrow",
+    "📋 расписание на неделю": "week",
+}
+
+
 def get_main_keyboard():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, is_persistent=True)
     web_app = types.WebAppInfo(url=WEBAPP_URL)
-    markup.add(
-        types.KeyboardButton("🚀 Открыть приложение ЭЗС 12-26", web_app=web_app)
-    )
+    markup.add(types.KeyboardButton("🚀 Открыть приложение ЭЗС 12-26", web_app=web_app))
     markup.add(types.KeyboardButton("📅 На сегодня"), types.KeyboardButton("📅 На завтра"))
     markup.add(types.KeyboardButton("📋 Расписание на неделю"))
     return markup
 
 
-@bot.message_handler(
-    func=lambda message: True,
-    content_types=["text", "photo", "document", "video", "audio"],
-)
-def handle_all(message):
-    try:
-        text = (message.text or "").strip().lower()
-        if "@" in text:
-            text = text.split("@")[0]
+def format_day(day_date, title):
+    day_name = DAYS_ORDER[day_date.weekday()]
+    lessons = get_day_schedule_for_date(day_date)
+    body = "\n".join(f"• {html.escape(l)}" for l in lessons) if lessons else "Пар нет 🎉"
+    return f"📅 <b>{title} ({day_name}, {day_date.strftime('%d.%m')})</b>\n\n{body}"
 
-        if text.startswith("/start") or "приложение" in text:
-            bot.send_message(
-                message.chat.id,
-                "Привет! Используй кнопки ниже:",
-                reply_markup=get_main_keyboard(),
-            )
-        elif "сегодня" in text:
-            today = get_now().date()
-            day_name = DAYS_ORDER[today.weekday()]
-            les = get_day_schedule_for_date(today)
-            les_str = (
-                "\n".join([f"• {l}" for l in les]) if les else "Пар нет 🎉"
-            )
-            bot.send_message(
-                message.chat.id,
-                f"📅 **Сегодня ({day_name})**:\n\n{les_str}",
-                parse_mode="Markdown",
-                reply_markup=get_main_keyboard(),
-            )
-        elif "завтра" in text:
-            tom = get_now().date() + datetime.timedelta(days=1)
-            day_name = DAYS_ORDER[tom.weekday()]
-            les = get_day_schedule_for_date(tom)
-            les_str = (
-                "\n".join([f"• {l}" for l in les]) if les else "Пар нет 🎉"
-            )
-            bot.send_message(
-                message.chat.id,
-                f"📅 **Завтра ({day_name})**:\n\n{les_str}",
-                parse_mode="Markdown",
-                reply_markup=get_main_keyboard(),
-            )
+
+def format_week():
+    lines = ["📋 <b>Расписание на неделю</b>", ""]
+    for d in get_week_schedule_data(get_now().date(), shift_weeks=0):
+        lines.append(f"<b>{d['day']} ({d['date']})</b>")
+        if d["lessons"]:
+            lines += [f"• {html.escape(l)}" for l in d["lessons"]]
         else:
-            bot.send_message(
-                message.chat.id, "Меню:", reply_markup=get_main_keyboard()
-            )
+            lines.append("Пар нет 🎉")
+        lines.append("")
+    return "\n".join(lines)
+
+
+def send_safe(chat_id, text):
+    try:
+        bot.send_message(
+            chat_id,
+            text,
+            parse_mode="HTML",
+            reply_markup=get_main_keyboard(),
+        )
     except Exception as e:
-        log.error(e, exc_info=True)
+        log.error("Не удалось отправить сообщение в чат %s: %s", chat_id, e, exc_info=True)
 
 
+# Команды: /start, /start@ИмяБота, /menu, /menu@ИмяБота
+@bot.message_handler(commands=["start", "menu"])
+def cmd_start(message):
+    log.info("command chat_type=%s chat_id=%s", message.chat.type, message.chat.id)
+    send_safe(message.chat.id, "Привет! Используйте кнопки ниже:")
+
+
+# Нажатия кнопок и текст: точное совпадение, без поиска подстроки
+@bot.message_handler(content_types=["text"])
+def on_text(message):
+    text = (message.text or "").strip().lower()
+    action = BUTTON_ACTIONS.get(text)
+
+    if action is None:
+        # В группах на посторонний текст не отвечаем, чтобы не спамить
+        if message.chat.type == "private" and text in ("меню", "приложение"):
+            send_safe(message.chat.id, "Меню:")
+        return
+
+    try:
+        today = get_now().date()
+        if action == "today":
+            send_safe(message.chat.id, format_day(today, "Сегодня"))
+        elif action == "tomorrow":
+            send_safe(message.chat.id, format_day(today + datetime.timedelta(days=1), "Завтра"))
+        elif action == "week":
+            send_safe(message.chat.id, format_week())
+    except Exception as e:
+        log.error("Ошибка обработки кнопки: %s", e, exc_info=True)
+
+
+# --- ЗАПУСК ---
 if __name__ == "__main__":
-
     def run_server():
         port = int(os.environ.get("PORT", 5000))
         app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 
-    t = Thread(target=run_server, daemon=True)
-    t.start()
+    Thread(target=run_server, daemon=True).start()
     log.info("Flask сервер запущен.")
 
-    try:
-        bot.remove_webhook(remove_pending=True)
-        bot.stop_polling()
-    except:
-        pass
-
-    while True:
-        try:
-            bot.infinity_polling(
-                timeout=60, long_polling_timeout=60, skip_pending=True
-            )
-        except Exception as e:
-            log.error(e)
-            import time
-
-            time.sleep(3)
+    bot.remove_webhook()
+    bot.infinity_polling(
+        timeout=60,
+        long_polling_timeout=60,
+        skip_pending=True,
+        allowed_updates=telebot.util.update_types,
+    )
