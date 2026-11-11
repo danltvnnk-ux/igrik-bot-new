@@ -581,11 +581,15 @@ def handle_messages(message):
         text = message.text.strip() if message.text else ""
         is_group = message.chat.type in ["group", "supergroup"]
 
+        # Убираем упоминание бота из текста в группе (например, "/start@igrik_app_bot" превратится в "/start")
+        if "@" in text:
+            text = text.split("@")[0]
+
         if text.startswith("/start"):
             bot.send_message(
                 message.chat.id,
                 "Привет! Я бот группы ЭЗС 12-26 с поддержкой мини-приложения 🚀\nНажми кнопку ниже или используй меню:",
-                reply_markup=get_main_keyboard() if not is_group else types.ReplyKeyboardRemove(),
+                reply_markup=get_main_keyboard() if not is_group else None,
             )
         elif "сегодня" in text.lower():
             today = get_now().date()
@@ -596,7 +600,6 @@ def handle_messages(message):
                 message.chat.id,
                 f"📅 **Сегодня ({day_name}, {today.strftime('%d.%m')})**\n\n{lessons_str}",
                 parse_mode="Markdown",
-                reply_markup=get_main_keyboard() if not is_group else None,
             )
         elif "завтра" in text.lower():
             tomorrow = get_now().date() + datetime.timedelta(days=1)
@@ -607,11 +610,21 @@ def handle_messages(message):
                 message.chat.id,
                 f"📅 **Завтра ({day_name}, {tomorrow.strftime('%d.%m')})**\n\n{lessons_str}",
                 parse_mode="Markdown",
-                reply_markup=get_main_keyboard() if not is_group else None,
             )
         elif "расписание на неделю" in text.lower():
             if is_group:
+                # В группе выдаем расписание на неделю компактным сообщением, чтобы не спамить
+                today = get_now().date()
+                full_week_msg = "📋 **Расписание на неделю:**\n\n"
+                for i in range(6):
+                    check_date = today + datetime.timedelta(days=i)
+                    day_name = DAYS_ORDER[check_date.weekday()]
+                    lessons = get_day_schedule_for_date(check_date)
+                    lessons_str = ", ".join(lessons) if lessons else "Выходной"
+                    full_week_msg += f"▫️ *{day_name}* ({check_date.strftime('%d.%m')}): {lessons_str}\n"
+                bot.send_message(message.chat.id, full_week_msg, parse_mode="Markdown")
                 return
+
             today = get_now().date()
             for i in range(7):
                 check_date = today + datetime.timedelta(days=i)
@@ -640,12 +653,16 @@ if __name__ == "__main__":
     flask_thread.start()
     log.info("Flask сервер запущен в фоне.")
 
-    # ПРИНУДИТЕЛЬНЫЙ СБРОС СТАРОГО ВЕБХУКА И ОЧЕРЕДИ
     try:
         bot.remove_webhook(remove_pending=True)
         bot.stop_polling()
-    except Exception:
-        pass
+        
+        # Устанавливаем кнопку мини-приложения в меню для групповых и личных чатов
+        webapp_info = types.WebAppInfo(url=WEBAPP_URL)
+        bot.set_chat_menu_button(chat_id=None, menu_button=types.MenuButtonWebApp(text="⚡ ЭЗС 12-26", web_app=webapp_info))
+        log.info("Кнопка WebApp в меню успешно установлена.")
+    except Exception as e:
+        log.error(f"Ошибка настройки меню: {e}")
 
     log.info("Запуск Telegram Polling в главном потоке...")
     
