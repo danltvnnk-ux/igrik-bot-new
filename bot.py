@@ -88,6 +88,18 @@ HTML_TEMPLATE = """
         </div>
     </div>
 
+    <!-- МОДАЛЬНОЕ ОКНО ПРОСМОТРА ДЗ ДНЯ -->
+    <div id="day-hw-modal" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-slate-800 border border-slate-700 w-full max-w-sm rounded-2xl p-4 space-y-4 shadow-2xl">
+            <div class="flex justify-between items-center">
+                <h3 id="day-hw-modal-title" class="text-sm font-semibold text-sky-400">Домашнее задание</h3>
+                <button onclick="closeDayHwModal()" class="text-slate-400 hover:text-white text-sm font-bold">✕</button>
+            </div>
+            <div id="day-hw-container" class="space-y-2 max-h-60 overflow-y-auto pr-1"></div>
+            <button onclick="closeDayHwModal()" class="w-full bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs py-2.5 rounded-xl font-medium transition">Закрыть</button>
+        </div>
+    </div>
+
     <!-- МОДАЛЬНОЕ ОКНО РЕДАКТИРОВАНИЯ ДНЯ -->
     <div id="edit-modal" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
         <div class="bg-slate-800 border border-slate-700 w-full max-w-sm rounded-2xl p-4 space-y-4 shadow-2xl">
@@ -113,7 +125,6 @@ HTML_TEMPLATE = """
         let editingDay = null;
         let currentEditingLessons = [];
 
-        // Возвращаем надежный фоллбек на твой ID, чтобы админка не пропадала
         const userId = tg.initDataUnsafe?.user?.id || 7000120396;
         const userName = (tg.initDataUnsafe?.user?.first_name || 'Студент') + (tg.initDataUnsafe?.user?.last_name ? ' ' + tg.initDataUnsafe?.user?.last_name : '');
 
@@ -153,21 +164,57 @@ HTML_TEMPLATE = """
             const schedule = activeWeekType === 'current' ? appData.current_week : appData.next_week;
             
             container.innerHTML = schedule.map(day => `
-                <div class="bg-slate-800 p-3.5 rounded-xl border border-slate-700 relative pb-9">
+                <div class="bg-slate-800 p-3.5 rounded-xl border border-slate-700 relative pb-11">
                     <div class="flex justify-between items-center mb-2">
                         <span class="font-semibold text-sky-400 text-sm">${day.day}</span>
                         <span class="text-xs text-slate-400">${day.date}</span>
                     </div>
-                    <ul class="space-y-1 text-xs text-slate-300">
+                    <ul class="space-y-1 text-xs text-slate-300 mb-2">
                         ${day.lessons.length > 0 ? day.lessons.map(l => `<li class="py-0.5">• ${l}</li>`).join('') : '<li class="text-slate-500 italic">Пар нет 🎉</li>'}
                     </ul>
-                    ${appData.is_admin ? `
-                        <button onclick="openEditModal('${day.day}')" class="absolute bottom-2.5 right-3 bg-amber-500/20 hover:bg-amber-500/40 text-amber-400 px-2 py-1 rounded-lg text-[11px] font-medium transition flex items-center gap-1">
-                            ✏️ Изменить
+                    <div class="absolute bottom-2.5 left-3 right-3 flex justify-between items-center pt-2 border-t border-slate-700/50">
+                        <button onclick="openDayHwModal('${day.date}', '${day.day}')" class="bg-sky-500/20 hover:bg-sky-500/40 text-sky-300 px-2.5 py-1 rounded-lg text-[11px] font-medium transition flex items-center gap-1">
+                            📖 Просмотреть ДЗ
                         </button>
-                    ` : ''}
+                        ${appData.is_admin ? `
+                            <button onclick="openEditModal('${day.day}')" class="bg-amber-500/20 hover:bg-amber-500/40 text-amber-400 px-2.5 py-1 rounded-lg text-[11px] font-medium transition flex items-center gap-1">
+                                ✏️ Изменить
+                            </button>
+                        ` : ''}
+                    </div>
                 </div>
             `).join('');
+        }
+
+        function openDayHwModal(dateStr, dayName) {
+            const modalTitle = document.getElementById('day-hw-modal-title');
+            const container = document.getElementById('day-hw-container');
+            
+            modalTitle.innerText = `ДЗ на ${dayName} (${dateStr})`;
+            
+            // Фильтруем домашку по дате (в appData.homework хранится date_key в формате YYYY-MM-DD или DD.MM в зависимости от логики, сопоставим по точному совпадению или частичному)
+            // Преобразуем dateStr (ДД.ММ) в формат для сравнения или ищем по совпадению подстроки даты
+            const filteredHw = appData.homework.filter(hw => hw.date_key && hw.date_key.includes(dateStr));
+
+            if (filteredHw.length === 0) {
+                container.innerHTML = '<p class="text-xs text-slate-500 italic text-center py-4">На этот день домашних заданий нет ✨</p>';
+            } else {
+                container.innerHTML = filteredHw.map(hw => `
+                    <div class="bg-slate-900 p-3 rounded-xl border border-slate-700/60 space-y-1">
+                        <div class="flex justify-between items-center">
+                            <span class="font-semibold text-amber-400 text-xs">${hw.subject}</span>
+                            <span class="text-[10px] text-slate-500">${hw.author}</span>
+                        </div>
+                        <p class="text-xs text-slate-200 whitespace-pre-wrap">${hw.task}</p>
+                    </div>
+                `).join('');
+            }
+
+            document.getElementById('day-hw-modal').classList.remove('hidden');
+        }
+
+        function closeDayHwModal() {
+            document.getElementById('day-hw-modal').classList.add('hidden');
         }
 
         function openEditModal(dayName) {
