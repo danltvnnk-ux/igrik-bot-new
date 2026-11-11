@@ -2,6 +2,7 @@ import datetime
 import logging
 import os
 import sqlite3
+from threading import Thread, Lock
 from zoneinfo import ZoneInfo
 from flask import Flask, jsonify, render_template_string, request
 import telebot
@@ -42,19 +43,23 @@ HTML_TEMPLATE = """
             <span id="admin-badge" class="hidden bg-amber-500/20 text-amber-400 text-xs px-2 py-1 rounded-full font-medium">Админ</span>
         </header>
 
+        <!-- Вкладки (только Расписание и Домашка) -->
         <div class="flex bg-slate-800 p-1 rounded-xl mb-6 shadow-lg">
             <button onclick="switchTab('schedule')" id="btn-schedule" class="flex-1 py-2 text-sm font-medium rounded-lg bg-sky-600 text-white transition">Расписание</button>
             <button onclick="switchTab('homework')" id="btn-homework" class="flex-1 py-2 text-sm font-medium rounded-lg text-slate-400 transition">Домашка</button>
         </div>
 
+        <!-- РАСПИСАНИЕ -->
         <div id="tab-schedule" class="space-y-4">
             <div class="flex bg-slate-800 p-1 rounded-lg">
                 <button onclick="setWeek('current')" id="week-btn-current" class="flex-1 py-1.5 text-xs font-medium rounded bg-slate-700 text-white">Эту неделю</button>
                 <button onclick="setWeek('next')" id="week-btn-next" class="flex-1 py-1.5 text-xs font-medium rounded text-slate-400">Следующую</button>
             </div>
+
             <div id="schedule-container" class="space-y-3"></div>
         </div>
 
+        <!-- ДОМАШКА -->
         <div id="tab-homework" class="hidden space-y-4">
             <div class="bg-slate-800 p-4 rounded-xl border border-slate-700">
                 <h2 class="text-sm font-semibold mb-3 text-sky-300">➕ Добавить домашнее задание</h2>
@@ -72,6 +77,7 @@ HTML_TEMPLATE = """
         </div>
     </div>
 
+    <!-- МОДАЛЬНОЕ ОКНО ПРОСМОТРА ДЗ ДНЯ -->
     <div id="day-hw-modal" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
         <div class="bg-slate-800 border border-slate-700 w-full max-w-sm rounded-2xl p-4 space-y-4 shadow-2xl">
             <div class="flex justify-between items-center">
@@ -83,6 +89,7 @@ HTML_TEMPLATE = """
         </div>
     </div>
 
+    <!-- МОДАЛЬНОЕ ОКНО РЕДАКТИРОВАНИЯ ДНЯ -->
     <div id="edit-modal" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
         <div class="bg-slate-800 border border-slate-700 w-full max-w-sm rounded-2xl p-4 space-y-4 shadow-2xl">
             <div class="flex justify-between items-center">
@@ -313,7 +320,9 @@ HTML_TEMPLATE = """
 </html>
 """
 
+# --- ФЛАСК И СЕРВЕР ---
 app = Flask(__name__)
+db_lock = Lock()
 
 
 @app.route("/")
@@ -491,22 +500,25 @@ def add_homework():
     return jsonify({"status": "success"})
 
 
-db_lock = sqlite3.Connection("file:memdb1?mode=memory&cache=shared", uri=True) # заглушка для потокобезопасности
+def run_flask():
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 
 
 def init_db():
-    with sqlite3.connect(DB_FILE) as conn:
-        cursor = conn.cursor()
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS homework (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                date_key TEXT,
-                subject TEXT,
-                task TEXT,
-                author TEXT
-            )
-        """)
-        conn.commit()
+    with db_lock:
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS homework (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    date_key TEXT,
+                    subject TEXT,
+                    task TEXT,
+                    author TEXT
+                )
+            """)
+            conn.commit()
 
 
 init_db()
@@ -624,19 +636,10 @@ def handle_messages(message):
 
 
 if __name__ == "__main__":
-    # Запускаем Flask в отдельном процессе, чтобы он не гасил бота
-    import multiprocessing
-    from threading import Lock
-    
-    db_lock = Lock()
-
-    def run_flask():
-        port = int(os.environ.get("PORT", 5000))
-        app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
-
-    p = multiprocessing.Process(target=run_flask)
-    p.start()
-    log.info("Flask сервер запущен в отдельном процессе.")
+    # Запускаем Flask в фоне
+    flask_thread = Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+    log.info("Flask сервер запущен в фоне.")
 
     try:
         bot.remove_webhook()
@@ -644,7 +647,7 @@ if __name__ == "__main__":
     except Exception:
         pass
 
-    log.info("Запуск Telegram Polling...")
+    log.info("Запуск Telegram Polling в главном потоке...")
     
     while True:
         try:
