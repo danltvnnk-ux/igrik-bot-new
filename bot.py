@@ -639,12 +639,12 @@ def handle_messages(message):
 
 
 if __name__ == "__main__":
-    # Запускаем Flask в отдельном фоновом потоке
+    # Запускаем Flask в фоновом потоке
     flask_thread = Thread(target=run_flask, daemon=True)
     flask_thread.start()
     log.info("Flask сервер запущен в фоне.")
 
-    # Принудительно очищаем старые соединения Telegram
+    # Принудительно очищаем старые соединения Telegram перед запуском
     try:
         bot.remove_webhook()
         bot.stop_polling()
