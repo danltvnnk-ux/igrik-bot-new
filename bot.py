@@ -507,11 +507,6 @@ def keep_alive():
     t.start()
 
 
-try:
-    bot.remove_webhook()
-except Exception:
-    pass
-
 user_states = {}
 db_lock = Lock()
 
@@ -592,12 +587,13 @@ def get_main_keyboard():
 def handle_messages(message):
     try:
         text = message.text.strip() if message.text else ""
+        is_group = message.chat.type in ["group", "supergroup"]
 
         if text == "/start":
             bot.send_message(
                 message.chat.id,
                 "Привет! Я бот группы ЭЗС 12-26 с поддержкой мини-приложения 🚀\nНажми кнопку ниже или используй меню:",
-                reply_markup=get_main_keyboard(),
+                reply_markup=get_main_keyboard() if not is_group else None,
             )
         elif text == "📅 На сегодня":
             today = get_now().date()
@@ -608,7 +604,7 @@ def handle_messages(message):
                 message.chat.id,
                 f"📅 **Сегодня ({day_name}, {today.strftime('%d.%m')})**\n\n{lessons_str}",
                 parse_mode="Markdown",
-                reply_markup=get_main_keyboard(),
+                reply_markup=get_main_keyboard() if not is_group else None,
             )
         elif text == "📅 На завтра":
             tomorrow = get_now().date() + datetime.timedelta(days=1)
@@ -619,9 +615,11 @@ def handle_messages(message):
                 message.chat.id,
                 f"📅 **Завтра ({day_name}, {tomorrow.strftime('%d.%m')})**\n\n{lessons_str}",
                 parse_mode="Markdown",
-                reply_markup=get_main_keyboard(),
+                reply_markup=get_main_keyboard() if not is_group else None,
             )
         elif text == "📋 Расписание на неделю":
+            if is_group:
+                return
             today = get_now().date()
             for i in range(7):
                 check_date = today + datetime.timedelta(days=i)
@@ -637,20 +635,30 @@ def handle_messages(message):
                 message.chat.id, "Выберите действие 👇", reply_markup=get_main_keyboard()
             )
         else:
-            bot.send_message(
-                message.chat.id, "Используйте меню ниже 👇", reply_markup=get_main_keyboard()
-            )
+            if not is_group:
+                bot.send_message(
+                    message.chat.id, "Используйте меню ниже 👇", reply_markup=get_main_keyboard()
+                )
     except Exception as e:
         log.error(f"Ошибка в handle_messages: {e}", exc_info=True)
 
 
 if __name__ == "__main__":
+    try:
+        bot.remove_webhook()
+        bot.stop_polling()
+    except Exception:
+        pass
+        
     keep_alive()
-    log.info("WebApp бот запущен.")
+    log.info("WebApp бот запущен и очищен от старых сессий.")
+    
     while True:
         try:
             bot.infinity_polling(
-                timeout=30, long_polling_timeout=30, skip_pending=True
+                timeout=60, 
+                long_polling_timeout=60, 
+                skip_pending=True
             )
         except Exception as e:
             log.error(f"Ошибка polling: {e}", exc_info=True)
