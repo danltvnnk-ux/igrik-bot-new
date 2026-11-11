@@ -63,6 +63,10 @@ HTML_TEMPLATE = """
             <div class="bg-slate-800 p-4 rounded-xl border border-slate-700">
                 <h2 class="text-sm font-semibold mb-3 text-sky-300">➕ Добавить домашнее задание</h2>
                 <form id="hw-form" onsubmit="submitHomework(event)" class="space-y-3">
+                    <div>
+                        <label class="block text-[11px] text-slate-400 mb-1">Дата на которую задано:</label>
+                        <input type="date" id="hw-date" required class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm text-slate-200 focus:outline-none focus:border-sky-500">
+                    </div>
                     <input type="text" id="hw-subject" placeholder="Предмет (например, Физика)" required class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm focus:outline-none focus:border-sky-500">
                     <textarea id="hw-task" placeholder="Что задали..." rows="2" required class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm focus:outline-none focus:border-sky-500"></textarea>
                     <button type="submit" class="w-full bg-sky-600 hover:bg-sky-500 text-white py-2.5 rounded-lg text-sm font-medium transition">Опубликовать</button>
@@ -128,6 +132,13 @@ HTML_TEMPLATE = """
         const userId = tg.initDataUnsafe?.user?.id || 7000120396;
         const userName = (tg.initDataUnsafe?.user?.first_name || 'Студент') + (tg.initDataUnsafe?.user?.last_name ? ' ' + tg.initDataUnsafe?.user?.last_name : '');
 
+        // Устанавливаем сегодняшнюю дату в поле ввода ДЗ по умолчанию
+        window.addEventListener('DOMContentLoaded', () => {
+            const todayIso = new Date().toISOString().split('T')[0];
+            const dateInput = document.getElementById('hw-date');
+            if (dateInput) dateInput.value = todayIso;
+        });
+
         function loadData() {
             fetch(`/api/data?user_id=${userId}`)
                 .then(res => res.json())
@@ -173,7 +184,7 @@ HTML_TEMPLATE = """
                         ${day.lessons.length > 0 ? day.lessons.map(l => `<li class="py-0.5">• ${l}</li>`).join('') : '<li class="text-slate-500 italic">Пар нет 🎉</li>'}
                     </ul>
                     <div class="absolute bottom-2.5 left-3 right-3 flex justify-between items-center pt-2 border-t border-slate-700/50">
-                        <button onclick="openDayHwModal('${day.date}', '${day.day}')" class="bg-sky-500/20 hover:bg-sky-500/40 text-sky-300 px-2.5 py-1 rounded-lg text-[11px] font-medium transition flex items-center gap-1">
+                        <button onclick="openDayHwModal('${day.full_date}', '${day.day}', '${day.date}')" class="bg-sky-500/20 hover:bg-sky-500/40 text-sky-300 px-2.5 py-1 rounded-lg text-[11px] font-medium transition flex items-center gap-1">
                             📖 Просмотреть ДЗ
                         </button>
                         ${appData.is_admin ? `
@@ -186,15 +197,14 @@ HTML_TEMPLATE = """
             `).join('');
         }
 
-        function openDayHwModal(dateStr, dayName) {
+        function openDayHwModal(fullDateStr, dayName, shortDateStr) {
             const modalTitle = document.getElementById('day-hw-modal-title');
             const container = document.getElementById('day-hw-container');
             
-            modalTitle.innerText = `ДЗ на ${dayName} (${dateStr})`;
+            modalTitle.innerText = `ДЗ на ${dayName} (${shortDateStr})`;
             
-            // Фильтруем домашку по дате (в appData.homework хранится date_key в формате YYYY-MM-DD или DD.MM в зависимости от логики, сопоставим по точному совпадению или частичному)
-            // Преобразуем dateStr (ДД.ММ) в формат для сравнения или ищем по совпадению подстроки даты
-            const filteredHw = appData.homework.filter(hw => hw.date_key && hw.date_key.includes(dateStr));
+            // Ищем домашку строго по полному совпадению даты (YYYY-MM-DD)
+            const filteredHw = appData.homework.filter(hw => hw.date_key === fullDateStr);
 
             if (filteredHw.length === 0) {
                 container.innerHTML = '<p class="text-xs text-slate-500 italic text-center py-4">На этот день домашних заданий нет ✨</p>';
@@ -293,28 +303,31 @@ HTML_TEMPLATE = """
                 return;
             }
             container.innerHTML = appData.homework.map(hw => `
-                <div class="bg-slate-800 p-3.5 rounded-xl border border-slate-700">
-                    <div class="flex justify-between items-center mb-1">
+                <div class="bg-slate-800 p-3.5 rounded-xl border border-slate-700 space-y-1">
+                    <div class="flex justify-between items-center">
                         <span class="font-semibold text-amber-400 text-sm">${hw.subject}</span>
-                        <span class="text-[10px] text-slate-500">${hw.author}</span>
+                        <span class="text-[11px] bg-slate-700/50 text-slate-300 px-2 py-0.5 rounded">${hw.date_key}</span>
                     </div>
                     <p class="text-xs text-slate-200 whitespace-pre-wrap">${hw.task}</p>
+                    <div class="text-[10px] text-slate-500 text-right">Автор: ${hw.author}</div>
                 </div>
             `).join('');
         }
 
         function submitHomework(e) {
             e.preventDefault();
+            const dateKey = document.getElementById('hw-date').value;
             const subject = document.getElementById('hw-subject').value;
             const task = document.getElementById('hw-task').value;
 
             fetch('/api/homework', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ subject, task, author: userName })
+                body: JSON.stringify({ date_key: dateKey, subject, task, author: userName })
             }).then(res => res.json()).then(data => {
                 if (data.status === 'success') {
-                    document.getElementById('hw-form').reset();
+                    document.getElementById('hw-task').value = '';
+                    document.getElementById('hw-subject').value = '';
                     loadData();
                 }
             });
@@ -647,6 +660,7 @@ def get_week_schedule_data(base_date, shift_weeks=0):
         week_data.append({
             "day": day_name,
             "date": day_date.strftime("%d.%m"),
+            "full_date": day_date.isoformat(),
             "lessons": lessons,
         })
     return week_data
