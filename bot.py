@@ -565,7 +565,6 @@ def get_day_schedule_for_date(target_date):
 
 
 def get_main_keyboard():
-    # Полноценная клавиатура с кнопкой мини-приложения (webapp) снизу
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, is_persistent=True)
     web_app = types.WebAppInfo(url=WEBAPP_URL)
     markup.add(
@@ -576,24 +575,29 @@ def get_main_keyboard():
     return markup
 
 
+# --- ОТДЕЛЬНЫЕ ОБРАБОТЧИКИ ДЛЯ КОМАНД И ТЕКСТА ---
+
+@bot.message_handler(commands=['start'])
+def handle_start(message):
+    try:
+        bot.send_message(
+            message.chat.id,
+            "Привет! Я бот группы ЭЗС 12-26 с поддержкой мини-приложения 🚀\nИспользуйте кнопки меню ниже:",
+            reply_markup=get_main_keyboard(),
+        )
+    except Exception as e:
+        log.error(f"Ошибка в handle_start: {e}", exc_info=True)
+
+
 @bot.message_handler(content_types=["text"])
-def handle_messages(message):
+def handle_text_messages(message):
     try:
         text = message.text.strip() if message.text else ""
-
-        # Убираем упоминание бота из текста в группе (например, "/start@igrik_app_bot" -> "/start")
         if "@" in text:
             text = text.split("@")[0]
-
         text_lower = text.lower()
 
-        if text_lower.startswith("/start") or "открыть приложение" in text_lower:
-            bot.send_message(
-                message.chat.id,
-                "Привет! Я бот группы ЭЗС 12-26 с поддержкой мини-приложения 🚀\nИспользуйте кнопки меню ниже:",
-                reply_markup=get_main_keyboard(),
-            )
-        elif "сегодня" in text_lower:
+        if "сегодня" in text_lower:
             today = get_now().date()
             day_name = DAYS_ORDER[today.weekday()]
             lessons = get_day_schedule_for_date(today)
@@ -630,12 +634,18 @@ def handle_messages(message):
             bot.send_message(
                 message.chat.id, "Выберите действие 👇", reply_markup=get_main_keyboard()
             )
+        elif "открыть приложение" in text_lower:
+            bot.send_message(
+                message.chat.id,
+                "Используйте кнопку ниже для открытия мини-приложения 👇",
+                reply_markup=get_main_keyboard(),
+            )
         else:
             bot.send_message(
                 message.chat.id, "Используйте меню ниже 👇", reply_markup=get_main_keyboard()
             )
     except Exception as e:
-        log.error(f"Ошибка в handle_messages: {e}", exc_info=True)
+        log.error(f"Ошибка в handle_text_messages: {e}", exc_info=True)
 
 
 if __name__ == "__main__":
