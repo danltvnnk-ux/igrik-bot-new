@@ -9,7 +9,7 @@ import telebot
 from telebot import apihelper, types
 
 # --- НАСТРОЙКИ И ЛОГИРОВАНИЕ ---
-TOKEN = "9106912523:AAEzNfeJqGr3ZKIoi5OyTaOMpLqgDm0Idxo"
+TOKEN = "9106912523:AAFVKhZC2epgoaVMPk4ZhPKVssZ1V1erma0"
 ADMINS = [6969053096, 5956780231, 7000120396]
 BY_TZ = ZoneInfo("Europe/Minsk")
 DB_FILE = "bot_webapp_data.db"
@@ -574,8 +574,6 @@ def get_main_keyboard():
     markup.add(types.KeyboardButton("📋 Расписание на неделю"))
     return markup
 
-
-# --- ОТДЕЛЬНЫЕ ОБРАБОТЧИКИ ДЛЯ КОМАНД И ТЕКСТА ---
 
 @bot.message_handler(commands=['start'])
 def handle_start(message):
