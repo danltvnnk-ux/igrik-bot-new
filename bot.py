@@ -17,9 +17,6 @@ DB_FILE = "bot_webapp_data.db"
 
 WEBAPP_URL = "https://web-production-a6d39d86.up.railway.app/webapp"
 
-# Вставь сюда точную ссылку, которую выдал BotFather (/myapps -> выбрать приложение -> скопировать Link)
-MINIAPP_LINK = "https://t.me/ИмяБота/ezs"
-
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -563,7 +560,7 @@ def get_day_schedule_for_date(target_date):
     return SCHEDULE.get(day_name, [[], []])[target_week_type]
 
 
-# --- КЛАВИАТУРЫ И DIRECT LINK ---
+# --- КЛАВИАТУРЫ И НАДЕЖНЫЙ REDIRECT В ЛС ---
 def get_private_keyboard():
     """Для ЛС: есть полноценная кнопка WebApp."""
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, is_persistent=True)
@@ -587,12 +584,13 @@ def get_group_keyboard():
 
 
 def get_group_inline():
-    """Инлайн-кнопка Direct Link для групп с точной ссылкой из BotFather."""
+    """Инлайн-кнопка для групп: безошибочно перенаправляет в ЛС с ботом для запуска WebApp."""
+    username = bot.get_me().username
     kb = types.InlineKeyboardMarkup()
     kb.add(
         types.InlineKeyboardButton(
             "🚀 Открыть приложение ЭЗС 12-26",
-            url=MINIAPP_LINK,
+            url=f"https://t.me/{username}?start=app",
         )
     )
     return kb
@@ -645,7 +643,7 @@ def cmd_start(message):
         send_safe(message.chat.id, "Привет! Кнопки расписания ниже:", get_group_keyboard())
         send_safe(
             message.chat.id,
-            "Мини-приложение группы:",
+            "Мини-приложение открывается в личных сообщениях с ботом:",
             get_group_inline(),
         )
 
