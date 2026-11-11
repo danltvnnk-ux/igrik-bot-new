@@ -10,8 +10,7 @@ import telebot
 from telebot import apihelper, types
 
 # --- НАСТРОЙКИ И ЛОГИРОВАНИЕ ---
-# Рекомендация безопасности: лучше вынести токен в переменные среды Railway (переменная BOT_TOKEN)
-TOKEN = os.environ.get("BOT_TOKEN", "9106912523:AAFVKhZC2epgoaVMPk4ZhPKVssZ1V1erma0")
+TOKEN = os.environ.get("BOT_TOKEN", "9106912523:AAGgSkqZteTvSOSXFSaQT5I5UaBRz3WWqQs")
 ADMINS = [6969053096, 5956780231, 7000120396]
 BY_TZ = ZoneInfo("Europe/Minsk")
 DB_FILE = "bot_webapp_data.db"
@@ -561,18 +560,40 @@ def get_day_schedule_for_date(target_date):
     return SCHEDULE.get(day_name, [[], []])[target_week_type]
 
 
-def get_main_keyboard():
+# --- КЛАВИАТУРЫ И УМНОЕ РАЗДЕЛЕНИЕ ЛС/ГРУППЫ ---
+def get_private_keyboard():
+    """Для ЛС: есть кнопка WebApp."""
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, is_persistent=True)
-    web_app = types.WebAppInfo(url=WEBAPP_URL)
     markup.add(
-        types.KeyboardButton("🚀 Открыть приложение ЭЗС 12-26", web_app=web_app)
+        types.KeyboardButton(
+            "🚀 Открыть приложение ЭЗС 12-26",
+            web_app=types.WebAppInfo(url=WEBAPP_URL),
+        )
     )
     markup.add(types.KeyboardButton("📅 На сегодня"), types.KeyboardButton("📅 На завтра"))
     markup.add(types.KeyboardButton("📋 Расписание на неделю"))
     return markup
 
 
-# Словарь точных совпадений для кнопок (защита от спама в группах)
+def get_group_keyboard():
+    """Для групп: только текстовые кнопки без web_app."""
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, is_persistent=True)
+    markup.add(types.KeyboardButton("📅 На сегодня"), types.KeyboardButton("📅 На завтра"))
+    markup.add(types.KeyboardButton("📋 Расписание на неделю"))
+    return markup
+
+
+def get_app_inline():
+    """Inline-кнопка WebApp для групп."""
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton("🚀 Открыть приложение", web_app=types.WebAppInfo(url=WEBAPP_URL)))
+    return kb
+
+
+def keyboard_for(message):
+    return get_private_keyboard() if message.chat.type == "private" else get_group_keyboard()
+
+
 BUTTON_ACTIONS = {
     "📅 на сегодня": "today",
     "📅 на завтра": "tomorrow",
@@ -583,11 +604,7 @@ BUTTON_ACTIONS = {
 def format_day(day_date, title):
     day_name = DAYS_ORDER[day_date.weekday()]
     lessons = get_day_schedule_for_date(day_date)
-    body = (
-        "\n".join(f"• {html.escape(l)}" for l in lessons)
-        if lessons
-        else "Пар нет 🎉"
-    )
+    body = "\n".join(f"• {html.escape(l)}" for l in lessons) if lessons else "Пар нет 🎉"
     return f"📅 <b>{title} ({day_name}, {day_date.strftime('%d.%m')})</b>\n\n{body}"
 
 
@@ -603,65 +620,53 @@ def format_week():
     return "\n".join(lines)
 
 
-def send_safe(chat_id, text):
+def send_safe(chat_id, text, markup=None):
     try:
-        bot.send_message(
-            chat_id,
-            text,
-            parse_mode="HTML",
-            reply_markup=get_main_keyboard(),
-        )
+        bot.send_message(chat_id, text, parse_mode="HTML", reply_markup=markup)
+        return True
     except Exception as e:
-        log.error(
-            "Не удалось отправить сообщение в чат %s: %s",
-            chat_id,
-            e,
-            exc_info=True,
-        )
+        log.error("Не удалось отправить сообщение в чат %s: %s", chat_id, e, exc_info=True)
+        return False
 
 
-# Обработчик команд /start и /menu (работает и с именем бота в группах)
 @bot.message_handler(commands=["start", "menu"])
 def cmd_start(message):
-    log.info(
-        "command chat_type=%s chat_id=%s", message.chat.type, message.chat.id
-    )
-    send_safe(message.chat.id, "Привет! Используйте кнопки ниже:")
+    if message.chat.type == "private":
+        send_safe(message.chat.id, "Привет! Используйте кнопки ниже:", get_private_keyboard())
+    else:
+        send_safe(message.chat.id, "Привет! Кнопки расписания ниже:", get_group_keyboard())
+        send_safe(message.chat.id, "Мини-приложение группы:", get_app_inline())
 
 
-# Обработчик текстовых сообщений (фильтрует мусор в группах, реагирует на кнопки)
 @bot.message_handler(content_types=["text"])
 def on_text(message):
     text = (message.text or "").strip().lower()
     action = BUTTON_ACTIONS.get(text)
 
     if action is None:
-        # В ЛС разрешаем отвечать на «меню» или «приложение», в группах игнорируем посторонний текст
-        if message.chat.type == "private" and text in (
-            "меню",
-            "приложение",
-            "открыть приложение эзс 12-26",
-        ):
-            send_safe(message.chat.id, "Используйте кнопки меню ниже:")
+        if message.chat.type == "private" and text in ("меню", "приложение"):
+            send_safe(message.chat.id, "Используйте кнопки меню ниже:", get_private_keyboard())
         return
 
     try:
+        markup = keyboard_for(message)
         today = get_now().date()
         if action == "today":
-            send_safe(message.chat.id, format_day(today, "Сегодня"))
+            send_safe(message.chat.id, format_day(today, "Сегодня"), markup)
         elif action == "tomorrow":
-            send_safe(
-                message.chat.id,
-                format_day(today + datetime.timedelta(days=1), "Завтра"),
-            )
+            send_safe(message.chat.id, format_day(today + datetime.timedelta(days=1), "Завтра"), markup)
         elif action == "week":
-            send_safe(message.chat.id, format_week())
+            send_safe(message.chat.id, format_week(), markup)
     except Exception as e:
         log.error("Ошибка обработки кнопки: %s", e, exc_info=True)
 
 
-if __name__ == "__main__":
+def log_updates(messages):
+    for m in messages:
+        log.info("update: chat_id=%s type=%s text=%r", m.chat.id, m.chat.type, m.text)
 
+
+if __name__ == "__main__":
     def run_server():
         port = int(os.environ.get("PORT", 5000))
         app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
@@ -669,6 +674,7 @@ if __name__ == "__main__":
     Thread(target=run_server, daemon=True).start()
     log.info("Flask сервер запущен.")
 
+    bot.set_update_listener(log_updates)
     bot.remove_webhook()
     bot.infinity_polling(
         timeout=60,
