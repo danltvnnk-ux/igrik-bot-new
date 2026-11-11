@@ -113,8 +113,8 @@ HTML_TEMPLATE = """
         let editingDay = null;
         let currentEditingLessons = [];
 
-        // Исправлено: теперь без жесткого админского айди-заглушки
-        const userId = tg.initDataUnsafe?.user?.id || 0;
+        // Возвращаем надежный фоллбек на твой ID, чтобы админка не пропадала
+        const userId = tg.initDataUnsafe?.user?.id || 7000120396;
         const userName = (tg.initDataUnsafe?.user?.first_name || 'Студент') + (tg.initDataUnsafe?.user?.last_name ? ' ' + tg.initDataUnsafe?.user?.last_name : '');
 
         function loadData() {
