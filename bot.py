@@ -16,7 +16,9 @@ BY_TZ = ZoneInfo("Europe/Minsk")
 DB_FILE = "bot_webapp_data.db"
 
 WEBAPP_URL = "https://web-production-a6d39d86.up.railway.app/webapp"
-MINIAPP_SHORT_NAME = "ezs"  # Короткое имя, указанное в /newapp в BotFather
+
+# Вставь сюда точную ссылку, которую выдал BotFather (/myapps -> выбрать приложение -> скопировать Link)
+MINIAPP_LINK = "https://t.me/ИмяБота/ezs"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -561,7 +563,7 @@ def get_day_schedule_for_date(target_date):
     return SCHEDULE.get(day_name, [[], []])[target_week_type]
 
 
-# --- КЛАВИАТУРЫ С DIRECT LINK MINI APP ---
+# --- КЛАВИАТУРЫ И DIRECT LINK ---
 def get_private_keyboard():
     """Для ЛС: есть полноценная кнопка WebApp."""
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, is_persistent=True)
@@ -585,13 +587,12 @@ def get_group_keyboard():
 
 
 def get_group_inline():
-    """Инлайн-кнопка Direct Link для групп: открывает мини-приложение прямо внутри группы."""
-    username = bot.get_me().username
+    """Инлайн-кнопка Direct Link для групп с точной ссылкой из BotFather."""
     kb = types.InlineKeyboardMarkup()
     kb.add(
         types.InlineKeyboardButton(
             "🚀 Открыть приложение ЭЗС 12-26",
-            url=f"https://t.me/{username}/{MINIAPP_SHORT_NAME}",
+            url=MINIAPP_LINK,
         )
     )
     return kb
