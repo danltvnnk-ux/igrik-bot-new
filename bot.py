@@ -565,7 +565,8 @@ def get_day_schedule_for_date(target_date):
 
 
 def get_main_keyboard():
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    # Создаем клавиатуру с кнопкой открытия мини-приложения прямо под строкой ввода
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, is_persistent=True)
     web_app = types.WebAppInfo(url=WEBAPP_URL)
     markup.add(
         types.KeyboardButton("🚀 Открыть приложение ЭЗС 12-26", web_app=web_app)
@@ -581,15 +582,14 @@ def handle_messages(message):
         text = message.text.strip() if message.text else ""
         is_group = message.chat.type in ["group", "supergroup"]
 
-        # Убираем упоминание бота из текста в группе (например, "/start@igrik_app_bot" превратится в "/start")
         if "@" in text:
             text = text.split("@")[0]
 
-        if text.startswith("/start"):
+        if text.startswith("/start") or "открыть приложение" in text.lower():
             bot.send_message(
                 message.chat.id,
-                "Привет! Я бот группы ЭЗС 12-26 с поддержкой мини-приложения 🚀\nНажми кнопку ниже или используй меню:",
-                reply_markup=get_main_keyboard() if not is_group else None,
+                "Привет! Я бот группы ЭЗС 12-26 с поддержкой мини-приложения 🚀\nИспользуйте кнопки меню ниже:",
+                reply_markup=get_main_keyboard(),
             )
         elif "сегодня" in text.lower():
             today = get_now().date()
@@ -600,6 +600,7 @@ def handle_messages(message):
                 message.chat.id,
                 f"📅 **Сегодня ({day_name}, {today.strftime('%d.%m')})**\n\n{lessons_str}",
                 parse_mode="Markdown",
+                reply_markup=get_main_keyboard(),
             )
         elif "завтра" in text.lower():
             tomorrow = get_now().date() + datetime.timedelta(days=1)
@@ -610,21 +611,9 @@ def handle_messages(message):
                 message.chat.id,
                 f"📅 **Завтра ({day_name}, {tomorrow.strftime('%d.%m')})**\n\n{lessons_str}",
                 parse_mode="Markdown",
+                reply_markup=get_main_keyboard(),
             )
         elif "расписание на неделю" in text.lower():
-            if is_group:
-                # В группе выдаем расписание на неделю компактным сообщением, чтобы не спамить
-                today = get_now().date()
-                full_week_msg = "📋 **Расписание на неделю:**\n\n"
-                for i in range(6):
-                    check_date = today + datetime.timedelta(days=i)
-                    day_name = DAYS_ORDER[check_date.weekday()]
-                    lessons = get_day_schedule_for_date(check_date)
-                    lessons_str = ", ".join(lessons) if lessons else "Выходной"
-                    full_week_msg += f"▫️ *{day_name}* ({check_date.strftime('%d.%m')}): {lessons_str}\n"
-                bot.send_message(message.chat.id, full_week_msg, parse_mode="Markdown")
-                return
-
             today = get_now().date()
             for i in range(7):
                 check_date = today + datetime.timedelta(days=i)
@@ -640,10 +629,9 @@ def handle_messages(message):
                 message.chat.id, "Выберите действие 👇", reply_markup=get_main_keyboard()
             )
         else:
-            if not is_group:
-                bot.send_message(
-                    message.chat.id, "Используйте меню ниже 👇", reply_markup=get_main_keyboard()
-                )
+            bot.send_message(
+                message.chat.id, "Используйте меню ниже 👇", reply_markup=get_main_keyboard()
+            )
     except Exception as e:
         log.error(f"Ошибка в handle_messages: {e}", exc_info=True)
 
@@ -656,13 +644,8 @@ if __name__ == "__main__":
     try:
         bot.remove_webhook(remove_pending=True)
         bot.stop_polling()
-        
-        # Устанавливаем кнопку мини-приложения в меню для групповых и личных чатов
-        webapp_info = types.WebAppInfo(url=WEBAPP_URL)
-        bot.set_chat_menu_button(chat_id=None, menu_button=types.MenuButtonWebApp(text="⚡ ЭЗС 12-26", web_app=webapp_info))
-        log.info("Кнопка WebApp в меню успешно установлена.")
-    except Exception as e:
-        log.error(f"Ошибка настройки меню: {e}")
+    except Exception:
+        pass
 
     log.info("Запуск Telegram Polling в главном потоке...")
     
