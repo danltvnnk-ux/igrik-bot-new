@@ -195,7 +195,7 @@ def get_day_schedule_for_date(target_date):
 def get_main_keyboard():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     web_app = types.WebAppInfo(
-        url="https://web-production-9c742d6e.up.railway.app/webapp"
+        url="https://igrik-bot-new-production.up.railway.app/webapp"
     )
     markup.add(
         types.KeyboardButton("🚀 Открыть приложение ЭЗС 12-26", web_app=web_app)
