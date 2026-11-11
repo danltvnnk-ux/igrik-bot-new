@@ -565,7 +565,7 @@ def get_day_schedule_for_date(target_date):
 
 
 def get_main_keyboard():
-    # Создаем клавиатуру с кнопкой открытия мини-приложения прямо под строкой ввода
+    # Полноценная клавиатура с кнопкой мини-приложения (webapp) снизу
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, is_persistent=True)
     web_app = types.WebAppInfo(url=WEBAPP_URL)
     markup.add(
@@ -580,18 +580,20 @@ def get_main_keyboard():
 def handle_messages(message):
     try:
         text = message.text.strip() if message.text else ""
-        is_group = message.chat.type in ["group", "supergroup"]
 
+        # Убираем упоминание бота из текста в группе (например, "/start@igrik_app_bot" -> "/start")
         if "@" in text:
             text = text.split("@")[0]
 
-        if text.startswith("/start") or "открыть приложение" in text.lower():
+        text_lower = text.lower()
+
+        if text_lower.startswith("/start") or "открыть приложение" in text_lower:
             bot.send_message(
                 message.chat.id,
                 "Привет! Я бот группы ЭЗС 12-26 с поддержкой мини-приложения 🚀\nИспользуйте кнопки меню ниже:",
                 reply_markup=get_main_keyboard(),
             )
-        elif "сегодня" in text.lower():
+        elif "сегодня" in text_lower:
             today = get_now().date()
             day_name = DAYS_ORDER[today.weekday()]
             lessons = get_day_schedule_for_date(today)
@@ -602,7 +604,7 @@ def handle_messages(message):
                 parse_mode="Markdown",
                 reply_markup=get_main_keyboard(),
             )
-        elif "завтра" in text.lower():
+        elif "завтра" in text_lower:
             tomorrow = get_now().date() + datetime.timedelta(days=1)
             day_name = DAYS_ORDER[tomorrow.weekday()]
             lessons = get_day_schedule_for_date(tomorrow)
@@ -613,7 +615,7 @@ def handle_messages(message):
                 parse_mode="Markdown",
                 reply_markup=get_main_keyboard(),
             )
-        elif "расписание на неделю" in text.lower():
+        elif "расписание на неделю" in text_lower:
             today = get_now().date()
             for i in range(7):
                 check_date = today + datetime.timedelta(days=i)
