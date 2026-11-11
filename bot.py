@@ -42,10 +42,10 @@ HTML_TEMPLATE = """
             <span id="admin-badge" class="hidden bg-amber-500/20 text-amber-400 text-xs px-2 py-1 rounded-full font-medium">Админ</span>
         </header>
 
+        <!-- Вкладки (только Расписание и Домашка) -->
         <div class="flex bg-slate-800 p-1 rounded-xl mb-6 shadow-lg">
             <button onclick="switchTab('schedule')" id="btn-schedule" class="flex-1 py-2 text-sm font-medium rounded-lg bg-sky-600 text-white transition">Расписание</button>
             <button onclick="switchTab('homework')" id="btn-homework" class="flex-1 py-2 text-sm font-medium rounded-lg text-slate-400 transition">Домашка</button>
-            <button onclick="switchTab('attendance')" id="btn-attendance" class="flex-1 py-2 text-sm font-medium rounded-lg text-slate-400 transition">Пропуски</button>
         </div>
 
         <!-- РАСПИСАНИЕ -->
@@ -73,22 +73,6 @@ HTML_TEMPLATE = """
                 </form>
             </div>
             <div id="homework-container" class="space-y-3"></div>
-        </div>
-
-        <!-- ПРОПУСКИ -->
-        <div id="tab-attendance" class="hidden space-y-4">
-            <div class="bg-slate-800 p-4 rounded-xl border border-slate-700 text-center">
-                <h2 class="text-sm font-semibold mb-2 text-sky-300">📌 Отметка на сегодня</h2>
-                <p class="text-xs text-slate-400 mb-4">Будешь ли ты сегодня на парах?</p>
-                <div class="grid grid-cols-2 gap-3">
-                    <button onclick="markAttendance('yes')" id="att-yes-btn" class="bg-emerald-600/20 border border-emerald-500/50 hover:bg-emerald-600 text-emerald-300 hover:text-white py-3 rounded-xl text-sm font-medium transition">✅ Я буду</button>
-                    <button onclick="markAttendance('no')" id="att-no-btn" class="bg-rose-600/20 border border-rose-500/50 hover:bg-rose-600 text-rose-300 hover:text-white py-3 rounded-xl text-sm font-medium transition">❌ Не приду</button>
-                </div>
-            </div>
-            <div class="bg-slate-800 p-4 rounded-xl border border-slate-700">
-                <h3 class="text-sm font-semibold mb-3 text-slate-300">👥 Список группы на сегодня</h3>
-                <div id="attendance-list" class="space-y-2 text-sm text-slate-400"><p>Загрузка...</p></div>
-            </div>
         </div>
     </div>
 
@@ -132,7 +116,6 @@ HTML_TEMPLATE = """
         const userId = tg.initDataUnsafe?.user?.id || 7000120396;
         const userName = (tg.initDataUnsafe?.user?.first_name || 'Студент') + (tg.initDataUnsafe?.user?.last_name ? ' ' + tg.initDataUnsafe?.user?.last_name : '');
 
-        // Устанавливаем сегодняшнюю дату в поле ввода ДЗ по умолчанию
         window.addEventListener('DOMContentLoaded', () => {
             const todayIso = new Date().toISOString().split('T')[0];
             const dateInput = document.getElementById('hw-date');
@@ -149,12 +132,11 @@ HTML_TEMPLATE = """
                     }
                     renderSchedule();
                     renderHomework();
-                    renderAttendance();
                 });
         }
 
         function switchTab(tab) {
-            ['schedule', 'homework', 'attendance'].forEach(t => {
+            ['schedule', 'homework'].forEach(t => {
                 document.getElementById(`tab-${t}`).classList.add('hidden');
                 document.getElementById(`btn-${t}`).className = "flex-1 py-2 text-sm font-medium rounded-lg text-slate-400 transition";
             });
@@ -202,8 +184,6 @@ HTML_TEMPLATE = """
             const container = document.getElementById('day-hw-container');
             
             modalTitle.innerText = `ДЗ на ${dayName} (${shortDateStr})`;
-            
-            // Ищем домашку строго по полному совпадению даты (YYYY-MM-DD)
             const filteredHw = appData.homework.filter(hw => hw.date_key === fullDateStr);
 
             if (filteredHw.length === 0) {
@@ -331,44 +311,6 @@ HTML_TEMPLATE = """
                     loadData();
                 }
             });
-        }
-
-        function markAttendance(status) {
-            fetch('/api/attendance', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ user_id: userId, user_name: userName, status: status })
-            }).then(res => res.json()).then(data => {
-                if (data.status === 'success') {
-                    loadData();
-                }
-            });
-        }
-
-        function renderAttendance() {
-            if (!appData) return;
-            const container = document.getElementById('attendance-list');
-            const att = appData.attendance;
-
-            const myRecord = att.find(a => a.user_id === userId);
-            if (myRecord) {
-                document.getElementById('att-yes-btn').className = myRecord.status === 'yes' ? "bg-emerald-600 text-white py-3 rounded-xl text-sm font-medium transition" : "bg-emerald-600/20 border border-emerald-500/50 text-emerald-300 py-3 rounded-xl text-sm font-medium transition";
-                document.getElementById('att-no-btn').className = myRecord.status === 'no' ? "bg-rose-600 text-white py-3 rounded-xl text-sm font-medium transition" : "bg-rose-600/20 border border-rose-500/50 text-rose-300 py-3 rounded-xl text-sm font-medium transition";
-            }
-
-            if (att.length === 0) {
-                container.innerHTML = '<p class="text-xs text-slate-500 italic">Никто еще не отметился сегодня.</p>';
-                return;
-            }
-
-            container.innerHTML = att.map(a => `
-                <div class="flex justify-between items-center bg-slate-900/50 px-3 py-2 rounded-lg text-xs">
-                    <span class="text-slate-200">${a.user_name}</span>
-                    <span class="${a.status === 'yes' ? 'text-emerald-400' : 'text-rose-400'} font-medium">
-                        ${a.status === 'yes' ? '✅ Будет' : '❌ Пропустит'}
-                    </span>
-                </div>
-            `).join('');
         }
 
         loadData();
@@ -506,19 +448,11 @@ def get_api_data():
             hw_rows = cursor.fetchall()
             homework = [dict(row) for row in hw_rows]
 
-            cursor.execute(
-                "SELECT * FROM attendance WHERE date = ?",
-                (today.isoformat(),),
-            )
-            att_rows = cursor.fetchall()
-            attendance = [dict(row) for row in att_rows]
-
     return jsonify({
         "is_admin": is_admin,
         "current_week": current_week_schedule,
         "next_week": next_week_schedule,
         "homework": homework,
-        "attendance": attendance,
         "today_date": today.isoformat(),
     })
 
@@ -564,32 +498,6 @@ def add_homework():
     return jsonify({"status": "success"})
 
 
-@app.route("/api/attendance", methods=["POST"])
-def set_attendance():
-    data = request.json
-    user_id = data.get("user_id")
-    user_name = data.get("user_name", "Студент")
-    status = data.get("status")
-    date_str = get_now().date().isoformat()
-
-    if not user_id or not status:
-        return jsonify({"status": "error"})
-
-    with db_lock:
-        with sqlite3.connect(DB_FILE) as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                INSERT INTO attendance (date, user_id, user_name, status) 
-                VALUES (?, ?, ?, ?)
-                ON CONFLICT(date, user_id) DO UPDATE SET status = ?, user_name = ?
-            """,
-                (date_str, user_id, user_name, status, status, user_name),
-            )
-            conn.commit()
-    return jsonify({"status": "success"})
-
-
 def run_flask():
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
@@ -620,15 +528,6 @@ def init_db():
                     subject TEXT,
                     task TEXT,
                     author TEXT
-                )
-            """)
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS attendance (
-                    date TEXT,
-                    user_id INTEGER,
-                    user_name TEXT,
-                    status TEXT,
-                    PRIMARY KEY (date, user_id)
                 )
             """)
             conn.commit()
@@ -686,7 +585,6 @@ def get_main_keyboard():
         types.KeyboardButton("🚀 Открыть приложение ЭЗС 12-26", web_app=web_app)
     )
     markup.add(types.KeyboardButton("📅 На сегодня"), types.KeyboardButton("📅 На завтра"))
-    markup.add(types.KeyboardButton("📋 Расписание на неделю"))
     return markup
 
 
@@ -754,28 +652,6 @@ def handle_messages(message):
             ),
             parse_mode="Markdown",
             reply_markup=get_main_keyboard(),
-        )
-    elif text == "📋 Расписание на неделю":
-        today = get_now().date()
-        for i in range(7):
-            check_date = today + datetime.timedelta(days=i)
-            day_name = DAYS_ORDER[check_date.weekday()]
-            lessons = get_day_schedule_for_date(check_date)
-            lessons_str = (
-                "\n".join([f"• {les}" for les in lessons])
-                if lessons
-                else "Выходной 🎉"
-            )
-            bot.send_message(
-                message.chat.id,
-                (
-                    f"▫️ **{day_name} ({check_date.strftime('%d.%m')})**:\n"
-                    f"{lessons_str}"
-                ),
-                parse_mode="Markdown",
-            )
-        bot.send_message(
-            message.chat.id, "Выберите действие 👇", reply_markup=get_main_keyboard()
         )
     else:
         bot.send_message(
