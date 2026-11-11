@@ -16,6 +16,7 @@ BY_TZ = ZoneInfo("Europe/Minsk")
 DB_FILE = "bot_webapp_data.db"
 
 WEBAPP_URL = "https://web-production-a6d39d86.up.railway.app/webapp"
+MINIAPP_SHORT_NAME = "ezs"  # Короткое имя, указанное в /newapp в BotFather
 
 logging.basicConfig(
     level=logging.INFO,
@@ -560,9 +561,9 @@ def get_day_schedule_for_date(target_date):
     return SCHEDULE.get(day_name, [[], []])[target_week_type]
 
 
-# --- КЛАВИАТУРЫ И УМНОЕ РАЗДЕЛЕНИЕ ЛС/ГРУППЫ ---
+# --- КЛАВИАТУРЫ С DIRECT LINK MINI APP ---
 def get_private_keyboard():
-    """Для ЛС: есть кнопка WebApp."""
+    """Для ЛС: есть полноценная кнопка WebApp."""
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, is_persistent=True)
     markup.add(
         types.KeyboardButton(
@@ -576,17 +577,23 @@ def get_private_keyboard():
 
 
 def get_group_keyboard():
-    """Для групп: только текстовые кнопки без web_app."""
+    """Для групп: текстовые кнопки без web_app."""
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, is_persistent=True)
     markup.add(types.KeyboardButton("📅 На сегодня"), types.KeyboardButton("📅 На завтра"))
     markup.add(types.KeyboardButton("📋 Расписание на неделю"))
     return markup
 
 
-def get_app_inline():
-    """Inline-кнопка WebApp для групп."""
+def get_group_inline():
+    """Инлайн-кнопка Direct Link для групп: открывает мини-приложение прямо внутри группы."""
+    username = bot.get_me().username
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("🚀 Открыть приложение", web_app=types.WebAppInfo(url=WEBAPP_URL)))
+    kb.add(
+        types.InlineKeyboardButton(
+            "🚀 Открыть приложение ЭЗС 12-26",
+            url=f"https://t.me/{username}/{MINIAPP_SHORT_NAME}",
+        )
+    )
     return kb
 
 
@@ -635,7 +642,11 @@ def cmd_start(message):
         send_safe(message.chat.id, "Привет! Используйте кнопки ниже:", get_private_keyboard())
     else:
         send_safe(message.chat.id, "Привет! Кнопки расписания ниже:", get_group_keyboard())
-        send_safe(message.chat.id, "Мини-приложение группы:", get_app_inline())
+        send_safe(
+            message.chat.id,
+            "Мини-приложение группы:",
+            get_group_inline(),
+        )
 
 
 @bot.message_handler(content_types=["text"])
