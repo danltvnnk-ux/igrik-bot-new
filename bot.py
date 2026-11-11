@@ -588,6 +588,15 @@ def get_main_keyboard():
     return markup
 
 
+def get_inline_keyboard():
+    markup = types.InlineKeyboardMarkup()
+    web_app = types.WebAppInfo(
+        url="https://web-production-a6d39d86.up.railway.app/webapp"
+    )
+    markup.add(types.InlineKeyboardButton("🚀 Открыть приложение ЭЗС 12-26", web_app=web_app))
+    return markup
+
+
 def safe_handler(func):
     @wraps(func)
     def wrapper(message, *args, **kwargs):
@@ -607,17 +616,27 @@ def safe_handler(func):
 @safe_handler
 def handle_messages(message):
     text = message.text.strip() if message.text else ""
+    is_group = message.chat.type in ["group", "supergroup"]
 
     if text == "/start":
-        bot.send_message(
-            message.chat.id,
-            (
-                "Привет! Я второй бот группы ЭЗС 12-26 с поддержкой мини-приложения"
-                " 🚀\nНажми кнопку ниже, чтобы открыть графический интерфейс:"
-            ),
-            reply_markup=get_main_keyboard(),
-        )
+        if is_group:
+            bot.send_message(
+                message.chat.id,
+                "Привет! Я бот группы ЭЗС 12-26. Нажми кнопку ниже, чтобы открыть приложение:",
+                reply_markup=get_inline_keyboard()
+            )
+        else:
+            bot.send_message(
+                message.chat.id,
+                (
+                    "Привет! Я второй бот группы ЭЗС 12-26 с поддержкой мини-приложения"
+                    " 🚀\nНажми кнопку ниже, чтобы открыть графический интерфейс:"
+                ),
+                reply_markup=get_main_keyboard(),
+            )
     elif text == "📅 На сегодня":
+        if is_group:
+            return
         today = get_now().date()
         day_name = DAYS_ORDER[today.weekday()]
         lessons = get_day_schedule_for_date(today)
@@ -636,6 +655,8 @@ def handle_messages(message):
             reply_markup=get_main_keyboard(),
         )
     elif text == "📅 На завтра":
+        if is_group:
+            return
         tomorrow = get_now().date() + datetime.timedelta(days=1)
         day_name = DAYS_ORDER[tomorrow.weekday()]
         lessons = get_day_schedule_for_date(tomorrow)
@@ -654,9 +675,10 @@ def handle_messages(message):
             reply_markup=get_main_keyboard(),
         )
     else:
-        bot.send_message(
-            message.chat.id, "Используйте меню ниже 👇", reply_markup=get_main_keyboard()
-        )
+        if not is_group:
+            bot.send_message(
+                message.chat.id, "Используйте меню ниже 👇", reply_markup=get_main_keyboard()
+            )
 
 
 if __name__ == "__main__":
