@@ -5,7 +5,7 @@ import sqlite3
 from functools import wraps
 from threading import Lock, Thread
 from zoneinfo import ZoneInfo
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template_string, request
 import telebot
 from telebot import apihelper, types
 
@@ -24,6 +24,213 @@ log = logging.getLogger("IgrikWebAppBot")
 apihelper.proxy = None
 bot = telebot.TeleBot(TOKEN)
 
+# --- HTML ИНТЕРФЕЙС МИНИ-ПРИЛОЖЕНИЯ ---
+HTML_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ЭЗС 12-26</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen pb-20">
+    <div class="max-w-md mx-auto p-4">
+        <header class="flex justify-between items-center mb-6 pt-2">
+            <h1 class="text-xl font-bold text-sky-400">⚡ ЭЗС 12-26</h1>
+            <span id="admin-badge" class="hidden bg-amber-500/20 text-amber-400 text-xs px-2 py-1 rounded-full font-medium">Админ</span>
+        </header>
+
+        <div class="flex bg-slate-800 p-1 rounded-xl mb-6 shadow-lg">
+            <button onclick="switchTab('schedule')" id="btn-schedule" class="flex-1 py-2 text-sm font-medium rounded-lg bg-sky-600 text-white transition">Расписание</button>
+            <button onclick="switchTab('homework')" id="btn-homework" class="flex-1 py-2 text-sm font-medium rounded-lg text-slate-400 transition">Домашка</button>
+            <button onclick="switchTab('attendance')" id="btn-attendance" class="flex-1 py-2 text-sm font-medium rounded-lg text-slate-400 transition">Пропуски</button>
+        </div>
+
+        <!-- РАСПИСАНИЕ -->
+        <div id="tab-schedule" class="space-y-4">
+            <div class="flex bg-slate-800 p-1 rounded-lg">
+                <button onclick="setWeek('current')" id="week-btn-current" class="flex-1 py-1.5 text-xs font-medium rounded bg-slate-700 text-white">Эту неделю</button>
+                <button onclick="setWeek('next')" id="week-btn-next" class="flex-1 py-1.5 text-xs font-medium rounded text-slate-400">Следующую</button>
+            </div>
+
+            <div id="admin-panel" class="hidden bg-amber-500/10 border border-amber-500/30 p-3 rounded-xl">
+                <p class="text-xs text-amber-400 font-semibold mb-2">🛠 Панель администратора</p>
+                <button onclick="alert('Редактирование расписания в разработке!')" class="w-full bg-amber-600 hover:bg-amber-500 text-white text-xs py-2 rounded-lg font-medium transition">Изменить расписание</button>
+            </div>
+
+            <div id="schedule-container" class="space-y-3"></div>
+        </div>
+
+        <!-- ДОМАШКА -->
+        <div id="tab-homework" class="hidden space-y-4">
+            <div class="bg-slate-800 p-4 rounded-xl border border-slate-700">
+                <h2 class="text-sm font-semibold mb-3 text-sky-300">➕ Добавить домашнее задание</h2>
+                <form id="hw-form" onsubmit="submitHomework(event)" class="space-y-3">
+                    <input type="text" id="hw-subject" placeholder="Предмет (например, Физика)" required class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm focus:outline-none focus:border-sky-500">
+                    <textarea id="hw-task" placeholder="Что задали..." rows="2" required class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm focus:outline-none focus:border-sky-500"></textarea>
+                    <button type="submit" class="w-full bg-sky-600 hover:bg-sky-500 text-white py-2.5 rounded-lg text-sm font-medium transition">Опубликовать</button>
+                </form>
+            </div>
+            <div id="homework-container" class="space-y-3"></div>
+        </div>
+
+        <!-- ПРОПУСКИ -->
+        <div id="tab-attendance" class="hidden space-y-4">
+            <div class="bg-slate-800 p-4 rounded-xl border border-slate-700 text-center">
+                <h2 class="text-sm font-semibold mb-2 text-sky-300">📌 Отметка на сегодня</h2>
+                <p class="text-xs text-slate-400 mb-4">Будешь ли ты сегодня на парах?</p>
+                <div class="grid grid-cols-2 gap-3">
+                    <button onclick="markAttendance('yes')" id="att-yes-btn" class="bg-emerald-600/20 border border-emerald-500/50 hover:bg-emerald-600 text-emerald-300 hover:text-white py-3 rounded-xl text-sm font-medium transition">✅ Я буду</button>
+                    <button onclick="markAttendance('no')" id="att-no-btn" class="bg-rose-600/20 border border-rose-500/50 hover:bg-rose-600 text-rose-300 hover:text-white py-3 rounded-xl text-sm font-medium transition">❌ Не приду</button>
+                </div>
+            </div>
+            <div class="bg-slate-800 p-4 rounded-xl border border-slate-700">
+                <h3 class="text-sm font-semibold mb-3 text-slate-300">👥 Список группы на сегодня</h3>
+                <div id="attendance-list" class="space-y-2 text-sm text-slate-400"><p>Загрузка...</p></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+
+        let appData = null;
+        let activeWeekType = 'current';
+
+        const userId = tg.initDataUnsafe?.user?.id || 7000120396;
+        const userName = (tg.initDataUnsafe?.user?.first_name || 'Студент') + (tg.initDataUnsafe?.user?.last_name ? ' ' + tg.initDataUnsafe?.user?.last_name : '');
+
+        function loadData() {
+            fetch(`/api/data?user_id=${userId}`)
+                .then(res => res.json())
+                .then(data => {
+                    appData = data;
+                    if (data.is_admin) {
+                        document.getElementById('admin-badge').classList.remove('hidden');
+                        document.getElementById('admin-panel').classList.remove('hidden');
+                    }
+                    renderSchedule();
+                    renderHomework();
+                    renderAttendance();
+                });
+        }
+
+        function switchTab(tab) {
+            ['schedule', 'homework', 'attendance'].forEach(t => {
+                document.getElementById(`tab-${t}`).classList.add('hidden');
+                document.getElementById(`btn-${t}`).className = "flex-1 py-2 text-sm font-medium rounded-lg text-slate-400 transition";
+            });
+            document.getElementById(`tab-${tab}`).classList.remove('hidden');
+            document.getElementById(`btn-${tab}`).className = "flex-1 py-2 text-sm font-medium rounded-lg bg-sky-600 text-white transition";
+        }
+
+        function setWeek(type) {
+            activeWeekType = type;
+            document.getElementById('week-btn-current').className = type === 'current' ? "flex-1 py-1.5 text-xs font-medium rounded bg-slate-700 text-white" : "flex-1 py-1.5 text-xs font-medium rounded text-slate-400";
+            document.getElementById('week-btn-next').className = type === 'next' ? "flex-1 py-1.5 text-xs font-medium rounded bg-slate-700 text-white" : "flex-1 py-1.5 text-xs font-medium rounded text-slate-400";
+            renderSchedule();
+        }
+
+        function renderSchedule() {
+            if (!appData) return;
+            const container = document.getElementById('schedule-container');
+            const schedule = activeWeekType === 'current' ? appData.current_week : appData.next_week;
+            
+            container.innerHTML = schedule.map(day => `
+                <div class="bg-slate-800 p-3.5 rounded-xl border border-slate-700">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="font-semibold text-sky-400 text-sm">${day.day}</span>
+                        <span class="text-xs text-slate-400">${day.date}</span>
+                    </div>
+                    <ul class="space-y-1 text-xs text-slate-300">
+                        ${day.lessons.length > 0 ? day.lessons.map(l => `<li class="py-0.5">• ${l}</li>`).join('') : '<li class="text-slate-500 italic">Пар нет 🎉</li>'}
+                    </ul>
+                </div>
+            `).join('');
+        }
+
+        function renderHomework() {
+            if (!appData) return;
+            const container = document.getElementById('homework-container');
+            if (appData.homework.length === 0) {
+                container.innerHTML = '<div class="text-center py-6 text-slate-500 text-sm">Домашки пока нет ✨</div>';
+                return;
+            }
+            container.innerHTML = appData.homework.map(hw => `
+                <div class="bg-slate-800 p-3.5 rounded-xl border border-slate-700">
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="font-semibold text-amber-400 text-sm">${hw.subject}</span>
+                        <span class="text-[10px] text-slate-500">${hw.author}</span>
+                    </div>
+                    <p class="text-xs text-slate-200 whitespace-pre-wrap">${hw.task}</p>
+                </div>
+            `).join('');
+        }
+
+        function submitHomework(e) {
+            e.preventDefault();
+            const subject = document.getElementById('hw-subject').value;
+            const task = document.getElementById('hw-task').value;
+
+            fetch('/api/homework', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ subject, task, author: userName })
+            }).then(res => res.json()).then(data => {
+                if (data.status === 'success') {
+                    document.getElementById('hw-form').reset();
+                    loadData();
+                }
+            });
+        }
+
+        function markAttendance(status) {
+            fetch('/api/attendance', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: userId, user_name: userName, status: status })
+            }).then(res => res.json()).then(data => {
+                if (data.status === 'success') {
+                    loadData();
+                }
+            });
+        }
+
+        function renderAttendance() {
+            if (!appData) return;
+            const container = document.getElementById('attendance-list');
+            const att = appData.attendance;
+
+            const myRecord = att.find(a => a.user_id === userId);
+            if (myRecord) {
+                document.getElementById('att-yes-btn').className = myRecord.status === 'yes' ? "bg-emerald-600 text-white py-3 rounded-xl text-sm font-medium transition" : "bg-emerald-600/20 border border-emerald-500/50 text-emerald-300 py-3 rounded-xl text-sm font-medium transition";
+                document.getElementById('att-no-btn').className = myRecord.status === 'no' ? "bg-rose-600 text-white py-3 rounded-xl text-sm font-medium transition" : "bg-rose-600/20 border border-rose-500/50 text-rose-300 py-3 rounded-xl text-sm font-medium transition";
+            }
+
+            if (att.length === 0) {
+                container.innerHTML = '<p class="text-xs text-slate-500 italic">Никто еще не отметился сегодня.</p>';
+                return;
+            }
+
+            container.innerHTML = att.map(a => `
+                <div class="flex justify-between items-center bg-slate-900/50 px-3 py-2 rounded-lg text-xs">
+                    <span class="text-slate-200">${a.user_name}</span>
+                    <span class="${a.status === 'yes' ? 'text-emerald-400' : 'text-rose-400'} font-medium">
+                        ${a.status === 'yes' ? '✅ Будет' : '❌ Пропустит'}
+                    </span>
+                </div>
+            `).join('');
+        }
+
+        loadData();
+    </script>
+</body>
+</html>
+"""
+
 # --- FLASK СЕРВЕР ДЛЯ WEBAPP ---
 app = Flask(__name__)
 
@@ -35,7 +242,7 @@ def home():
 
 @app.route("/webapp")
 def webapp_page():
-    return render_template("index.html")
+    return render_template_string(HTML_TEMPLATE)
 
 
 # --- API ДЛЯ МИНИ-ПРИЛОЖЕНИЯ ---
@@ -44,12 +251,10 @@ def get_api_data():
     user_id = request.args.get("user_id", type=int)
     is_admin = user_id in ADMINS if user_id else False
 
-    # Получаем расписание на текущую и следующую неделю
     today = get_now().date()
     current_week_schedule = get_week_schedule_data(today, shift_weeks=0)
     next_week_schedule = get_week_schedule_data(today, shift_weeks=1)
 
-    # Получаем домашку и пропуски из БД
     with db_lock:
         with sqlite3.connect(DB_FILE) as conn:
             conn.row_factory = sqlite3.Row
@@ -105,7 +310,7 @@ def set_attendance():
     data = request.json
     user_id = data.get("user_id")
     user_name = data.get("user_name", "Студент")
-    status = data.get("status")  # 'yes' или 'no'
+    status = data.get("status")
     date_str = get_now().date().isoformat()
 
     if not user_id or not status:
@@ -285,7 +490,7 @@ def get_week_schedule_data(base_date, shift_weeks=0):
     ) + datetime.timedelta(weeks=shift_weeks)
     week_data = []
 
-    for i in range(6):  # Понедельник - Суббота
+    for i in range(6):
         day_date = start_of_week + datetime.timedelta(days=i)
         day_name = DAYS_ORDER[i]
         w_type = get_week_type(day_date)
