@@ -55,9 +55,25 @@ HTML_TEMPLATE = """
                 <button onclick="setWeek('next')" id="week-btn-next" class="flex-1 py-1.5 text-xs font-medium rounded text-slate-400">Следующую</button>
             </div>
 
-            <div id="admin-panel" class="hidden bg-amber-500/10 border border-amber-500/30 p-3 rounded-xl">
-                <p class="text-xs text-amber-400 font-semibold mb-2">🛠 Панель администратора</p>
-                <button onclick="alert('Редактирование расписания в разработке!')" class="w-full bg-amber-600 hover:bg-amber-500 text-white text-xs py-2 rounded-lg font-medium transition">Изменить расписание</button>
+            <!-- Админ панель с формой редактирования -->
+            <div id="admin-panel" class="hidden bg-amber-500/10 border border-amber-500/30 p-4 rounded-xl space-y-3">
+                <p class="text-xs text-amber-400 font-semibold">🛠 Панель администратора: Изменить расписание</p>
+                <form id="schedule-edit-form" onsubmit="submitScheduleEdit(event)" class="space-y-2.5">
+                    <select id="edit-day" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs focus:outline-none focus:border-amber-500 text-slate-200">
+                        <option value="Понедельник">Понедельник</option>
+                        <option value="Вторник">Вторник</option>
+                        <option value="Среда">Среда</option>
+                        <option value="Четверг">Четверг</option>
+                        <option value="Пятница">Пятница</option>
+                        <option value="Суббота">Суббота</option>
+                    </select>
+                    <select id="edit-week-type" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs focus:outline-none focus:border-amber-500 text-slate-200">
+                        <option value="0">Текущая неделя (тип 0)</option>
+                        <option value="1">Следующая неделя (тип 1)</option>
+                    </select>
+                    <textarea id="edit-lessons" placeholder="Введите пары по одной на строку&#10;Пример:&#10;1 пара (08.30-10.10): Математика&#10;2 пара (10.20-12.00): Физика" rows="4" required class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs focus:outline-none focus:border-amber-500 text-slate-200"></textarea>
+                    <button type="submit" class="w-full bg-amber-600 hover:bg-amber-500 text-white text-xs py-2 rounded-lg font-medium transition">Сохранить расписание</button>
+                </form>
             </div>
 
             <div id="schedule-container" class="space-y-3"></div>
@@ -150,6 +166,27 @@ HTML_TEMPLATE = """
                     </ul>
                 </div>
             `).join('');
+        }
+
+        function submitScheduleEdit(e) {
+            e.preventDefault();
+            const day = document.getElementById('edit-day').value;
+            const week_type = parseInt(document.getElementById('edit-week-type').value);
+            const lessonsText = document.getElementById('edit-lessons').value;
+            const lessons = lessonsText.split('\\n').map(l => l.trim()).filter(l => l.length > 0);
+
+            fetch('/api/schedule', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: userId, day: day, week_type: week_type, lessons: lessons })
+            }).then(res => res.json()).then(data => {
+                if (data.status === 'success') {
+                    alert('Расписание успешно обновлено!');
+                    loadData();
+                } else {
+                    alert('Ошибка: ' + (data.message || 'Не удалось обновить'));
+                }
+            });
         }
 
         function renderHomework() {
@@ -245,111 +282,7 @@ def webapp_page():
     return render_template_string(HTML_TEMPLATE)
 
 
-# --- API ДЛЯ МИНИ-ПРИЛОЖЕНИЯ ---
-@app.route("/api/data", methods=["GET"])
-def get_api_data():
-    user_id = request.args.get("user_id", type=int)
-    is_admin = user_id in ADMINS if user_id else False
-
-    today = get_now().date()
-    current_week_schedule = get_week_schedule_data(today, shift_weeks=0)
-    next_week_schedule = get_week_schedule_data(today, shift_weeks=1)
-
-    with db_lock:
-        with sqlite3.connect(DB_FILE) as conn:
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT * FROM homework ORDER BY date_key DESC, id DESC"
-            )
-            hw_rows = cursor.fetchall()
-            homework = [dict(row) for row in hw_rows]
-
-            cursor.execute(
-                "SELECT * FROM attendance WHERE date = ?",
-                (today.isoformat(),),
-            )
-            att_rows = cursor.fetchall()
-            attendance = [dict(row) for row in att_rows]
-
-    return jsonify({
-        "is_admin": is_admin,
-        "current_week": current_week_schedule,
-        "next_week": next_week_schedule,
-        "homework": homework,
-        "attendance": attendance,
-        "today_date": today.isoformat(),
-    })
-
-
-@app.route("/api/homework", methods=["POST"])
-def add_homework():
-    data = request.json
-    subject = data.get("subject")
-    task = data.get("task")
-    date_key = data.get("date_key", get_now().date().isoformat())
-    author = data.get("author", "Аноним")
-
-    if not subject or not task:
-        return jsonify({"status": "error", "message": "Пустые поля"})
-
-    with db_lock:
-        with sqlite3.connect(DB_FILE) as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                "INSERT INTO homework (date_key, subject, task, author) VALUES"
-                " (?, ?, ?, ?)",
-                (date_key, subject, task, author),
-            )
-            conn.commit()
-    return jsonify({"status": "success"})
-
-
-@app.route("/api/attendance", methods=["POST"])
-def set_attendance():
-    data = request.json
-    user_id = data.get("user_id")
-    user_name = data.get("user_name", "Студент")
-    status = data.get("status")
-    date_str = get_now().date().isoformat()
-
-    if not user_id or not status:
-        return jsonify({"status": "error"})
-
-    with db_lock:
-        with sqlite3.connect(DB_FILE) as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                INSERT INTO attendance (date, user_id, user_name, status) 
-                VALUES (?, ?, ?, ?)
-                ON CONFLICT(date, user_id) DO UPDATE SET status = ?, user_name = ?
-            """,
-                (date_str, user_id, user_name, status, status, user_name),
-            )
-            conn.commit()
-    return jsonify({"status": "success"})
-
-
-def run_flask():
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
-
-
-def keep_alive():
-    t = Thread(target=run_flask, daemon=True)
-    t.start()
-
-
-try:
-    bot.remove_webhook()
-except Exception:
-    pass
-
-user_states = {}
-db_lock = Lock()
-
-# --- РАСПИСАНИЕ ЭЗС 12-26 ---
+# --- ГЛОБАЛЬНОЕ РАСПИСАНИЕ В ПАМЯТИ ---
 SCHEDULE = {
     "Понедельник": [
         [
@@ -444,6 +377,129 @@ DAYS_ORDER = [
     "Суббота",
     "Воскресенье",
 ]
+
+
+# --- API ДЛЯ МИНИ-ПРИЛОЖЕНИЯ ---
+@app.route("/api/data", methods=["GET"])
+def get_api_data():
+    user_id = request.args.get("user_id", type=int)
+    is_admin = user_id in ADMINS if user_id else False
+
+    today = get_now().date()
+    current_week_schedule = get_week_schedule_data(today, shift_weeks=0)
+    next_week_schedule = get_week_schedule_data(today, shift_weeks=1)
+
+    with db_lock:
+        with sqlite3.connect(DB_FILE) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT * FROM homework ORDER BY date_key DESC, id DESC"
+            )
+            hw_rows = cursor.fetchall()
+            homework = [dict(row) for row in hw_rows]
+
+            cursor.execute(
+                "SELECT * FROM attendance WHERE date = ?",
+                (today.isoformat(),),
+            )
+            att_rows = cursor.fetchall()
+            attendance = [dict(row) for row in att_rows]
+
+    return jsonify({
+        "is_admin": is_admin,
+        "current_week": current_week_schedule,
+        "next_week": next_week_schedule,
+        "homework": homework,
+        "attendance": attendance,
+        "today_date": today.isoformat(),
+    })
+
+
+@app.route("/api/schedule", methods=["POST"])
+def update_schedule():
+    data = request.json
+    user_id = data.get("user_id")
+    if user_id not in ADMINS:
+        return jsonify({"status": "error", "message": "Нет прав админа"})
+
+    day = data.get("day")
+    week_type = data.get("week_type")  # 0 или 1
+    lessons = data.get("lessons")
+
+    if day in SCHEDULE and week_type in [0, 1]:
+        SCHEDULE[day][week_type] = lessons
+        return jsonify({"status": "success"})
+
+    return jsonify({"status": "error", "message": "Неверные данные"})
+
+
+@app.route("/api/homework", methods=["POST"])
+def add_homework():
+    data = request.json
+    subject = data.get("subject")
+    task = data.get("task")
+    date_key = data.get("date_key", get_now().date().isoformat())
+    author = data.get("author", "Аноним")
+
+    if not subject or not task:
+        return jsonify({"status": "error", "message": "Пустые поля"})
+
+    with db_lock:
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO homework (date_key, subject, task, author) VALUES"
+                " (?, ?, ?, ?)",
+                (date_key, subject, task, author),
+            )
+            conn.commit()
+    return jsonify({"status": "success"})
+
+
+@app.route("/api/attendance", methods=["POST"])
+def set_attendance():
+    data = request.json
+    user_id = data.get("user_id")
+    user_name = data.get("user_name", "Студент")
+    status = data.get("status")
+    date_str = get_now().date().isoformat()
+
+    if not user_id or not status:
+        return jsonify({"status": "error"})
+
+    with db_lock:
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO attendance (date, user_id, user_name, status) 
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(date, user_id) DO UPDATE SET status = ?, user_name = ?
+            """,
+                (date_str, user_id, user_name, status, status, user_name),
+            )
+            conn.commit()
+    return jsonify({"status": "success"})
+
+
+def run_flask():
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
+
+
+def keep_alive():
+    t = Thread(target=run_flask, daemon=True)
+    t.start()
+
+
+try:
+    bot.remove_webhook()
+except Exception:
+    pass
+
+user_states = {}
+db_lock = Lock()
 
 
 # --- РАБОТА С БД ---
@@ -633,3 +689,4 @@ if __name__ == "__main__":
             import time
 
             time.sleep(5)
+            
