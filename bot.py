@@ -584,15 +584,7 @@ def get_main_keyboard():
         types.KeyboardButton("🚀 Открыть приложение ЭЗС 12-26", web_app=web_app)
     )
     markup.add(types.KeyboardButton("📅 На сегодня"), types.KeyboardButton("📅 На завтра"))
-    return markup
-
-
-def get_inline_keyboard():
-    markup = types.InlineKeyboardMarkup()
-    web_app = types.WebAppInfo(
-        url="https://web-production-a6d39d86.up.railway.app/webapp"
-    )
-    markup.add(types.InlineKeyboardButton("🚀 Открыть приложение ЭЗС 12-2грам", web_app=web_app))
+    markup.add(types.KeyboardButton("📋 Расписание на неделю"))
     return markup
 
 
@@ -600,28 +592,14 @@ def get_inline_keyboard():
 def handle_messages(message):
     try:
         text = message.text.strip() if message.text else ""
-        is_group = message.chat.type in ["group", "supergroup"]
 
         if text == "/start":
-            if is_group:
-                markup = types.InlineKeyboardMarkup()
-                web_app = types.WebAppInfo(url="https://web-production-a6d39d86.up.railway.app/webapp")
-                markup.add(types.InlineKeyboardButton("🚀 Открыть приложение ЭЗС 12-26", web_app=web_app))
-                bot.send_message(
-                    message.chat.id,
-                    "Привет! Я бот группы ЭЗС 12-26. Нажми кнопку ниже, чтобы открыть приложение:",
-                    reply_markup=markup
-                )
-            else:
-                bot.send_message(
-                    message.chat.id,
-                    "Привет! Я второй бот группы ЭЗС 12-26 с поддержкой мини-приложения 🚀\nНажми кнопку ниже, чтобы открыть графический интерфейс:",
-                    reply_phosphor=None,
-                    reply_markup=get_main_keyboard(),
-                )
+            bot.send_message(
+                message.chat.id,
+                "Привет! Я бот группы ЭЗС 12-26 с поддержкой мини-приложения 🚀\nНажми кнопку ниже или используй меню:",
+                reply_markup=get_main_keyboard(),
+            )
         elif text == "📅 На сегодня":
-            if is_group:
-                return
             today = get_now().date()
             day_name = DAYS_ORDER[today.weekday()]
             lessons = get_day_schedule_for_date(today)
@@ -633,8 +611,6 @@ def handle_messages(message):
                 reply_markup=get_main_keyboard(),
             )
         elif text == "📅 На завтра":
-            if is_group:
-                return
             tomorrow = get_now().date() + datetime.timedelta(days=1)
             day_name = DAYS_ORDER[tomorrow.weekday()]
             lessons = get_day_schedule_for_date(tomorrow)
@@ -645,11 +621,25 @@ def handle_messages(message):
                 parse_mode="Markdown",
                 reply_markup=get_main_keyboard(),
             )
-        else:
-            if not is_group:
+        elif text == "📋 Расписание на неделю":
+            today = get_now().date()
+            for i in range(7):
+                check_date = today + datetime.timedelta(days=i)
+                day_name = DAYS_ORDER[check_date.weekday()]
+                lessons = get_day_schedule_for_date(check_date)
+                lessons_str = "\n".join([f"• {les}" for les in lessons]) if lessons else "Выходной 🎉"
                 bot.send_message(
-                    message.chat.id, "Используйте меню ниже 👇", reply_markup=get_main_keyboard()
+                    message.chat.id,
+                    f"▫️ **{day_name} ({check_date.strftime('%d.%m')})**:\n{lessons_str}",
+                    parse_mode="Markdown",
                 )
+            bot.send_message(
+                message.chat.id, "Выберите действие 👇", reply_markup=get_main_keyboard()
+            )
+        else:
+            bot.send_message(
+                message.chat.id, "Используйте меню ниже 👇", reply_markup=get_main_keyboard()
+            )
     except Exception as e:
         log.error(f"Ошибка в handle_messages: {e}", exc_info=True)
 
@@ -665,5 +655,4 @@ if __name__ == "__main__":
         except Exception as e:
             log.error(f"Ошибка polling: {e}", exc_info=True)
             import time
-
             time.sleep(5)
