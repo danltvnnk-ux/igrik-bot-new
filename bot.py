@@ -2,7 +2,7 @@ import datetime
 import logging
 import os
 import sqlite3
-from threading import Lock, Thread
+from threading import Thread
 from zoneinfo import ZoneInfo
 from flask import Flask, jsonify, render_template_string, request
 import telebot
@@ -502,11 +502,6 @@ def run_flask():
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 
 
-def keep_alive():
-    t = Thread(target=run_flask, daemon=True)
-    t.start()
-
-
 user_states = {}
 db_lock = Lock()
 
@@ -589,7 +584,7 @@ def handle_messages(message):
         text = message.text.strip() if message.text else ""
         is_group = message.chat.type in ["group", "supergroup"]
 
-        if text == "/start":
+        if text.startswith("/start"):
             bot.send_message(
                 message.chat.id,
                 "Привет! Я бот группы ЭЗС 12-26 с поддержкой мини-приложения 🚀\nНажми кнопку ниже или используй меню:",
@@ -644,14 +639,19 @@ def handle_messages(message):
 
 
 if __name__ == "__main__":
+    # Запускаем Flask в отдельном фоновом потоке
+    flask_thread = Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+    log.info("Flask сервер запущен в фоне.")
+
+    # Принудительно очищаем старые соединения Telegram
     try:
         bot.remove_webhook()
         bot.stop_polling()
     except Exception:
         pass
-        
-    keep_alive()
-    log.info("WebApp бот запущен и очищен от старых сессий.")
+
+    log.info("Запуск Telegram Polling в главном потоке...")
     
     while True:
         try:
