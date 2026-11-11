@@ -95,9 +95,7 @@ HTML_TEMPLATE = """
                 <h3 id="modal-title" class="text-sm font-semibold text-amber-400">Редактирование дня</h3>
                 <button onclick="closeEditModal()" class="text-slate-400 hover:text-white text-sm font-bold">✕</button>
             </div>
-            <div id="modal-lessons-container" class="space-y-2 max-h-60 overflow-y-auto pr-1">
-                <!-- Инпуты для пар -->
-            </div>
+            <div id="modal-lessons-container" class="space-y-2 max-h-60 overflow-y-auto pr-1"></div>
             <button onclick="addLessonInput()" class="w-full bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs py-2 rounded-lg font-medium transition">➕ Добавить пару / урок</button>
             <div class="flex gap-2 pt-2">
                 <button onclick="closeEditModal()" class="flex-1 bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs py-2.5 rounded-xl font-medium transition">Отмена</button>
@@ -115,7 +113,8 @@ HTML_TEMPLATE = """
         let editingDay = null;
         let currentEditingLessons = [];
 
-        const userId = tg.initDataUnsafe?.user?.id || 7000120396;
+        // Исправлено: теперь без жесткого админского айди-заглушки
+        const userId = tg.initDataUnsafe?.user?.id || 0;
         const userName = (tg.initDataUnsafe?.user?.first_name || 'Студент') + (tg.initDataUnsafe?.user?.last_name ? ' ' + tg.initDataUnsafe?.user?.last_name : '');
 
         function loadData() {
@@ -171,7 +170,6 @@ HTML_TEMPLATE = """
             `).join('');
         }
 
-        // ЛОГИКА МОДАЛЬНОГО ОКНА РЕДАКТИРОВАНИЯ
         function openEditModal(dayName) {
             editingDay = dayName;
             const schedule = activeWeekType === 'current' ? appData.current_week : appData.next_week;
