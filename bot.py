@@ -636,13 +636,13 @@ def handle_messages(message):
 
 
 if __name__ == "__main__":
-    # Запускаем Flask в фоне
     flask_thread = Thread(target=run_flask, daemon=True)
     flask_thread.start()
     log.info("Flask сервер запущен в фоне.")
 
+    # ПРИНУДИТЕЛЬНЫЙ СБРОС СТАРОГО ВЕБХУКА И ОЧЕРЕДИ
     try:
-        bot.remove_webhook()
+        bot.remove_webhook(remove_pending=True)
         bot.stop_polling()
     except Exception:
         pass
