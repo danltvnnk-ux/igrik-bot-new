@@ -55,27 +55,6 @@ HTML_TEMPLATE = """
                 <button onclick="setWeek('next')" id="week-btn-next" class="flex-1 py-1.5 text-xs font-medium rounded text-slate-400">Следующую</button>
             </div>
 
-            <!-- Админ панель с формой редактирования -->
-            <div id="admin-panel" class="hidden bg-amber-500/10 border border-amber-500/30 p-4 rounded-xl space-y-3">
-                <p class="text-xs text-amber-400 font-semibold">🛠 Панель администратора: Изменить расписание</p>
-                <form id="schedule-edit-form" onsubmit="submitScheduleEdit(event)" class="space-y-2.5">
-                    <select id="edit-day" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs focus:outline-none focus:border-amber-500 text-slate-200">
-                        <option value="Понедельник">Понедельник</option>
-                        <option value="Вторник">Вторник</option>
-                        <option value="Среда">Среда</option>
-                        <option value="Четверг">Четверг</option>
-                        <option value="Пятница">Пятница</option>
-                        <option value="Суббота">Суббота</option>
-                    </select>
-                    <select id="edit-week-type" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs focus:outline-none focus:border-amber-500 text-slate-200">
-                        <option value="0">Текущая неделя (тип 0)</option>
-                        <option value="1">Следующая неделя (тип 1)</option>
-                    </select>
-                    <textarea id="edit-lessons" placeholder="Просто введи названия предметов по одному на строку&#10;Пример:&#10;Математика&#10;Физика&#10;Классный час" rows="4" required class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs focus:outline-none focus:border-amber-500 text-slate-200"></textarea>
-                    <button type="submit" class="w-full bg-amber-600 hover:bg-amber-500 text-white text-xs py-2 rounded-lg font-medium transition">Сохранить расписание</button>
-                </form>
-            </div>
-
             <div id="schedule-container" class="space-y-3"></div>
         </div>
 
@@ -109,12 +88,32 @@ HTML_TEMPLATE = """
         </div>
     </div>
 
+    <!-- МОДАЛЬНОЕ ОКНО РЕДАКТИРОВАНИЯ ДНЯ -->
+    <div id="edit-modal" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-slate-800 border border-slate-700 w-full max-w-sm rounded-2xl p-4 space-y-4 shadow-2xl">
+            <div class="flex justify-between items-center">
+                <h3 id="modal-title" class="text-sm font-semibold text-amber-400">Редактирование дня</h3>
+                <button onclick="closeEditModal()" class="text-slate-400 hover:text-white text-sm font-bold">✕</button>
+            </div>
+            <div id="modal-lessons-container" class="space-y-2 max-h-60 overflow-y-auto pr-1">
+                <!-- Инпуты для пар -->
+            </div>
+            <button onclick="addLessonInput()" class="w-full bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs py-2 rounded-lg font-medium transition">➕ Добавить пару / урок</button>
+            <div class="flex gap-2 pt-2">
+                <button onclick="closeEditModal()" class="flex-1 bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs py-2.5 rounded-xl font-medium transition">Отмена</button>
+                <button onclick="saveDaySchedule()" class="flex-1 bg-amber-600 hover:bg-amber-500 text-white text-xs py-2.5 rounded-xl font-medium transition">Сохранить</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
 
         let appData = null;
         let activeWeekType = 'current';
+        let editingDay = null;
+        let currentEditingLessons = [];
 
         const userId = tg.initDataUnsafe?.user?.id || 7000120396;
         const userName = (tg.initDataUnsafe?.user?.first_name || 'Студент') + (tg.initDataUnsafe?.user?.last_name ? ' ' + tg.initDataUnsafe?.user?.last_name : '');
@@ -126,7 +125,6 @@ HTML_TEMPLATE = """
                     appData = data;
                     if (data.is_admin) {
                         document.getElementById('admin-badge').classList.remove('hidden');
-                        document.getElementById('admin-panel').classList.remove('hidden');
                     }
                     renderSchedule();
                     renderHomework();
@@ -156,7 +154,7 @@ HTML_TEMPLATE = """
             const schedule = activeWeekType === 'current' ? appData.current_week : appData.next_week;
             
             container.innerHTML = schedule.map(day => `
-                <div class="bg-slate-800 p-3.5 rounded-xl border border-slate-700">
+                <div class="bg-slate-800 p-3.5 rounded-xl border border-slate-700 relative pb-9">
                     <div class="flex justify-between items-center mb-2">
                         <span class="font-semibold text-sky-400 text-sm">${day.day}</span>
                         <span class="text-xs text-slate-400">${day.date}</span>
@@ -164,50 +162,80 @@ HTML_TEMPLATE = """
                     <ul class="space-y-1 text-xs text-slate-300">
                         ${day.lessons.length > 0 ? day.lessons.map(l => `<li class="py-0.5">• ${l}</li>`).join('') : '<li class="text-slate-500 italic">Пар нет 🎉</li>'}
                     </ul>
+                    ${appData.is_admin ? `
+                        <button onclick="openEditModal('${day.day}')" class="absolute bottom-2.5 right-3 bg-amber-500/20 hover:bg-amber-500/40 text-amber-400 px-2 py-1 rounded-lg text-[11px] font-medium transition flex items-center gap-1">
+                            ✏️ Изменить
+                        </button>
+                    ` : ''}
                 </div>
             `).join('');
         }
 
-        // УМНЫЙ АВТОФОРМАТТЕР ПАР И УРОКОВ
-        function submitScheduleEdit(e) {
-            e.preventDefault();
-            const day = document.getElementById('edit-day').value;
-            const week_type = parseInt(document.getElementById('edit-week-type').value);
-            const rawText = document.getElementById('edit-lessons').value;
+        // ЛОГИКА МОДАЛЬНОГО ОКНА РЕДАКТИРОВАНИЯ
+        function openEditModal(dayName) {
+            editingDay = dayName;
+            const schedule = activeWeekType === 'current' ? appData.current_week : appData.next_week;
+            const dayObj = schedule.find(d => d.day === dayName);
+            currentEditingLessons = dayObj ? [...dayObj.lessons] : [];
             
-            const lines = rawText.split('\\n').map(l => l.trim()).filter(l => l.length > 0);
-            
-            // Стандартное примерное время для пар и уроков
-            const times = [
-                "08.30-10.10", "10.20-12.00", "12.40-14.20", 
-                "14.30-16.10", "16.20-18.00", "15.25-17.05"
-            ];
-            
-            const formattedLessons = lines.map((line, index) => {
-                // Если пользователь уже написал со словом "пара" или "урок", оставляем как есть
-                if (line.toLowerCase().includes('пара') || line.toLowerCase().includes('урок')) {
-                    return line;
-                }
-                
-                // Иначе автоматически определяем: первые 3-4 обычно пары, остальные уроки
-                const num = index + 1;
-                const typeName = num <= 4 ? "пара" : "урок";
-                const timeStr = times[index] ? ` (${times[index]})` : "";
-                
-                return `${num} ${typeName}${timeStr}: ${line}`;
-            });
+            document.getElementById('modal-title').innerText = `${dayName} (${activeWeekType === 'current' ? 'Текущая' : 'Следующая'})`;
+            renderModalLessons();
+            document.getElementById('edit-modal').classList.remove('hidden');
+        }
+
+        function closeEditModal() {
+            document.getElementById('edit-modal').classList.add('hidden');
+            editingDay = null;
+        }
+
+        function renderModalLessons() {
+            const container = document.getElementById('modal-lessons-container');
+            if (currentEditingLessons.length === 0) {
+                container.innerHTML = '<p class="text-xs text-slate-500 italic text-center py-4">Пар нет</p>';
+                return;
+            }
+            container.innerHTML = currentEditingLessons.map((lesson, index) => `
+                <div class="flex items-center gap-2">
+                    <input type="text" value="${lesson}" onchange="updateLessonText(${index}, this.value)" class="flex-1 bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-slate-200 focus:outline-none focus:border-amber-500">
+                    <button onclick="removeLesson(${index})" class="bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white p-2 rounded-lg text-xs transition" title="Удалить пару">🗑</button>
+                </div>
+            `).join('');
+        }
+
+        function updateLessonText(index, val) {
+            currentEditingLessons[index] = val;
+        }
+
+        function removeLesson(index) {
+            currentEditingLessons.splice(index, 1);
+            renderModalLessons();
+        }
+
+        function addLessonInput() {
+            const num = currentEditingLessons.length + 1;
+            currentEditingLessons.push(`${num} пара: Новый предмет`);
+            renderModalLessons();
+        }
+
+        function saveDaySchedule() {
+            if (!editingDay) return;
+            const weekTypeNum = activeWeekType === 'current' ? 0 : 1;
 
             fetch('/api/schedule', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ user_id: userId, day: day, week_type: week_type, lessons: formattedLessons })
+                body: JSON.stringify({ 
+                    user_id: userId, 
+                    day: editingDay, 
+                    week_type: weekTypeNum, 
+                    lessons: currentEditingLessons.filter(l => l.trim().length > 0) 
+                })
             }).then(res => res.json()).then(data => {
                 if (data.status === 'success') {
-                    alert('Расписание успешно обновлено и оформлено!');
-                    document.getElementById('edit-lessons').value = '';
+                    closeEditModal();
                     loadData();
                 } else {
-                    alert('Ошибка: ' + (data.message || 'Не удалось обновить'));
+                    alert('Ошибка: ' + (data.message || 'Не удалось сохранить'));
                 }
             });
         }
