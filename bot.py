@@ -14,6 +14,9 @@ ADMINS = [6969053096, 5956780231, 7000120396]
 BY_TZ = ZoneInfo("Europe/Minsk")
 DB_FILE = "bot_webapp_data.db"
 
+# Твой актуальный домен на Railway
+WEBAPP_URL = "https://web-production-a6d39d86.up.railway.app/webapp"
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -567,9 +570,7 @@ def get_day_schedule_for_date(target_date):
 
 def get_main_keyboard():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    web_app = types.WebAppInfo(
-        url="https://web-production-a6d39d86.up.railway.app/webapp"
-    )
+    web_app = types.WebAppInfo(url=WEBAPP_URL)
     markup.add(
         types.KeyboardButton("🚀 Открыть приложение ЭЗС 12-26", web_app=web_app)
     )
@@ -578,7 +579,7 @@ def get_main_keyboard():
     return markup
 
 
-@bot.message_handler(func=lambda message: True, content_types=["text"])
+@bot.message_handler(content_types=["text"])
 def handle_messages(message):
     try:
         text = message.text.strip() if message.text else ""
@@ -588,9 +589,9 @@ def handle_messages(message):
             bot.send_message(
                 message.chat.id,
                 "Привет! Я бот группы ЭЗС 12-26 с поддержкой мини-приложения 🚀\nНажми кнопку ниже или используй меню:",
-                reply_markup=get_main_keyboard() if not is_group else None,
+                reply_markup=get_main_keyboard() if not is_group else types.ReplyKeyboardRemove(),
             )
-        elif text == "📅 На сегодня":
+        elif "сегодня" in text.lower():
             today = get_now().date()
             day_name = DAYS_ORDER[today.weekday()]
             lessons = get_day_schedule_for_date(today)
@@ -601,7 +602,7 @@ def handle_messages(message):
                 parse_mode="Markdown",
                 reply_markup=get_main_keyboard() if not is_group else None,
             )
-        elif text == "📅 На завтра":
+        elif "завтра" in text.lower():
             tomorrow = get_now().date() + datetime.timedelta(days=1)
             day_name = DAYS_ORDER[tomorrow.weekday()]
             lessons = get_day_schedule_for_date(tomorrow)
@@ -612,7 +613,7 @@ def handle_messages(message):
                 parse_mode="Markdown",
                 reply_markup=get_main_keyboard() if not is_group else None,
             )
-        elif text == "📋 Расписание на неделю":
+        elif "расписание на неделю" in text.lower():
             if is_group:
                 return
             today = get_now().date()
@@ -644,7 +645,7 @@ if __name__ == "__main__":
     flask_thread.start()
     log.info("Flask сервер запущен в фоне.")
 
-    # Принудительно очищаем старые соединения Telegram перед запуском
+    # Очищаем старые сессии, чтобы не было ошибки 409
     try:
         bot.remove_webhook()
         bot.stop_polling()
