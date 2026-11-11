@@ -71,7 +71,7 @@ HTML_TEMPLATE = """
                         <option value="0">Текущая неделя (тип 0)</option>
                         <option value="1">Следующая неделя (тип 1)</option>
                     </select>
-                    <textarea id="edit-lessons" placeholder="Введите пары по одной на строку&#10;Пример:&#10;1 пара (08.30-10.10): Математика&#10;2 пара (10.20-12.00): Физика" rows="4" required class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs focus:outline-none focus:border-amber-500 text-slate-200"></textarea>
+                    <textarea id="edit-lessons" placeholder="Просто введи названия предметов по одному на строку&#10;Пример:&#10;Математика&#10;Физика&#10;Классный час" rows="4" required class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs focus:outline-none focus:border-amber-500 text-slate-200"></textarea>
                     <button type="submit" class="w-full bg-amber-600 hover:bg-amber-500 text-white text-xs py-2 rounded-lg font-medium transition">Сохранить расписание</button>
                 </form>
             </div>
@@ -168,20 +168,43 @@ HTML_TEMPLATE = """
             `).join('');
         }
 
+        // УМНЫЙ АВТОФОРМАТТЕР ПАР И УРОКОВ
         function submitScheduleEdit(e) {
             e.preventDefault();
             const day = document.getElementById('edit-day').value;
             const week_type = parseInt(document.getElementById('edit-week-type').value);
-            const lessonsText = document.getElementById('edit-lessons').value;
-            const lessons = lessonsText.split('\\n').map(l => l.trim()).filter(l => l.length > 0);
+            const rawText = document.getElementById('edit-lessons').value;
+            
+            const lines = rawText.split('\\n').map(l => l.trim()).filter(l => l.length > 0);
+            
+            // Стандартное примерное время для пар и уроков
+            const times = [
+                "08.30-10.10", "10.20-12.00", "12.40-14.20", 
+                "14.30-16.10", "16.20-18.00", "15.25-17.05"
+            ];
+            
+            const formattedLessons = lines.map((line, index) => {
+                // Если пользователь уже написал со словом "пара" или "урок", оставляем как есть
+                if (line.toLowerCase().includes('пара') || line.toLowerCase().includes('урок')) {
+                    return line;
+                }
+                
+                // Иначе автоматически определяем: первые 3-4 обычно пары, остальные уроки
+                const num = index + 1;
+                const typeName = num <= 4 ? "пара" : "урок";
+                const timeStr = times[index] ? ` (${times[index]})` : "";
+                
+                return `${num} ${typeName}${timeStr}: ${line}`;
+            });
 
             fetch('/api/schedule', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ user_id: userId, day: day, week_type: week_type, lessons: lessons })
+                body: JSON.stringify({ user_id: userId, day: day, week_type: week_type, lessons: formattedLessons })
             }).then(res => res.json()).then(data => {
                 if (data.status === 'success') {
-                    alert('Расписание успешно обновлено!');
+                    alert('Расписание успешно обновлено и оформлено!');
+                    document.getElementById('edit-lessons').value = '';
                     loadData();
                 } else {
                     alert('Ошибка: ' + (data.message || 'Не удалось обновить'));
@@ -268,7 +291,7 @@ HTML_TEMPLATE = """
 </html>
 """
 
-# --- FLASK СЕРВЕР ДЛЯ WEBAPP ---
+# --- ФЛАСК И СЕРВЕР ---
 app = Flask(__name__)
 
 
@@ -282,7 +305,6 @@ def webapp_page():
     return render_template_string(HTML_TEMPLATE)
 
 
-# --- ГЛОБАЛЬНОЕ РАСПИСАНИЕ В ПАМЯТИ ---
 SCHEDULE = {
     "Понедельник": [
         [
@@ -379,7 +401,6 @@ DAYS_ORDER = [
 ]
 
 
-# --- API ДЛЯ МИНИ-ПРИЛОЖЕНИЯ ---
 @app.route("/api/data", methods=["GET"])
 def get_api_data():
     user_id = request.args.get("user_id", type=int)
@@ -424,7 +445,7 @@ def update_schedule():
         return jsonify({"status": "error", "message": "Нет прав админа"})
 
     day = data.get("day")
-    week_type = data.get("week_type")  # 0 или 1
+    week_type = data.get("week_type")
     lessons = data.get("lessons")
 
     if day in SCHEDULE and week_type in [0, 1]:
@@ -502,7 +523,6 @@ user_states = {}
 db_lock = Lock()
 
 
-# --- РАБОТА С БД ---
 def init_db():
     with db_lock:
         with sqlite3.connect(DB_FILE) as conn:
@@ -689,4 +709,3 @@ if __name__ == "__main__":
             import time
 
             time.sleep(5)
-            
