@@ -66,7 +66,7 @@ _alert_lock = Lock()
 
 
 def notify_admins(text, key=None):
-    """Пишет каждому админу в личку. Одинаковые уведомления (по key) не чаще раза в ALERT_COOLDOWN."""
+    """Пишет каждому админу в личку. Одинаковое уведомление (по key) не чаще раза в ALERT_COOLDOWN."""
     key = key or text[:80]
     now = time.time()
     with _alert_lock:
@@ -79,18 +79,6 @@ def notify_admins(text, key=None):
             bot.send_message(admin_id, text[:3900])
         except Exception as e:
             log.error("Не удалось отправить уведомление админу %s: %s", admin_id, e)
-
-
-class PollingAlertHandler:
-    """Вызывается telebot при ошибке опроса Telegram. Возврат True означает: продолжать работу."""
-
-    def handle(self, exception):
-        log.error("Ошибка опроса Telegram: %s", exception)
-        notify_admins(
-            f"⚠️ Проблема с опросом Telegram:\n{type(exception).__name__}: {exception}",
-            key=f"poll:{type(exception).__name__}",
-        )
-        return True
 
 
 @contextmanager
@@ -1007,22 +995,24 @@ if __name__ == "__main__":
     log.info("Flask сервер запущен.")
 
     bot.set_update_listener(log_updates)
-    try:
-        bot.remove_webhook()
-    except Exception as e:
-        log.warning("Не удалось снять webhook: %s", e)
+    bot.remove_webhook()
 
     notify_admins("✅ Бот запущен и работает.", key="startup")
 
-    try:
-        bot.infinity_polling(
-            timeout=60,
-            long_polling_timeout=60,
-            skip_pending=True,
-            allowed_updates=telebot.util.update_types,
-            exception_handler=PollingAlertHandler(),
-        )
-    except Exception as e:
-        log.exception("Опрос Telegram остановлен")
-        notify_admins(f"🔥 Бот остановлен из-за ошибки: {type(e).__name__}: {e}", key="polling-stopped")
-        raise
+    # Опрос Telegram. При любой ошибке уведомляем админов и продолжаем работу
+    # (процесс не завершаем, иначе Railway запустит второй экземпляр и будет конфликт 409)
+    while True:
+        try:
+            bot.infinity_polling(
+                timeout=60,
+                long_polling_timeout=60,
+                skip_pending=True,
+                allowed_updates=telebot.util.update_types,
+            )
+        except Exception as e:
+            log.exception("Опрос Telegram прервался")
+            notify_admins(
+                f"🔥 Бот споткнулся, перезапускаю опрос: {type(e).__name__}: {e}",
+                key=f"poll:{type(e).__name__}",
+            )
+            time.sleep(10)
