@@ -26,7 +26,7 @@ log = logging.getLogger("IgrikWebAppBot")
 apihelper.proxy = None
 bot = telebot.TeleBot(TOKEN)
 
-# --- ИНТЕРФЕЙС МИНИ-ПРИЛОЖЕНИЯ (В ЦВЕТАХ СЕРДЕЧЕК: КОРИЧНЕВЫЙ, БЕЛЫЙ, СЕРЕБРЯНЫЙ, ЧЕРНЫЙ) ---
+# --- ИНТЕРФЕЙС МИНИ-ПРИЛОЖЕНИЯ В ЦВЕТАХ СЕРДЕЧЕК ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="ru">
@@ -37,13 +37,11 @@ HTML_TEMPLATE = """
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* Кастомные цвета под палитру сердечек */
         .bg-custom-dark { background-color: #121212; }
         .bg-custom-card { background-color: #1a1a1a; }
         .bg-custom-border { border-color: #333333; }
         .btn-chocolate { background-color: #8B5A2B; }
         .btn-chocolate:hover { background-color: #A06835; }
-        .text-chocolate { color: #D2B48C; }
     </style>
 </head>
 <body class="bg-custom-dark text-zinc-100 min-h-screen pb-20">
@@ -52,7 +50,7 @@ HTML_TEMPLATE = """
             <h1 class="text-xl font-bold text-zinc-100 flex items-center gap-2">
                 <span>🤎</span> ЭЗС 12-26
             </h1>
-            <span id="admin-badge" class="hidden bg-zinc-800 text-zinc-300 border border-zinc-700 text-xs px-2.5 py-1 rounded-full font-medium">Админ</span>
+            <span id="admin-badge" class="hidden btn-chocolate text-white text-xs px-2.5 py-1 rounded-full font-medium shadow">Админ</span>
         </header>
 
         <!-- Вкладки -->
@@ -64,7 +62,7 @@ HTML_TEMPLATE = """
         <!-- РАСПИСАНИЕ -->
         <div id="tab-schedule" class="space-y-4">
             <div class="flex bg-custom-card border border-custom-border p-1 rounded-lg">
-                <button onclick="setWeek('current')" id="week-btn-current" class="flex-1 py-1.5 text-xs font-medium rounded bg-zinc-800 text-white shadow">Эту неделю</button>
+                <button onclick="setWeek('current')" id="week-btn-current" class="flex-1 py-1.5 text-xs font-medium rounded btn-chocolate text-white shadow">Эту неделю</button>
                 <button onclick="setWeek('next')" id="week-btn-next" class="flex-1 py-1.5 text-xs font-medium rounded text-zinc-400">Следующую</button>
             </div>
 
@@ -97,7 +95,7 @@ HTML_TEMPLATE = """
                 <button onclick="closeDayHwModal()" class="text-zinc-400 hover:text-white text-sm font-bold">✕</button>
             </div>
             <div id="day-hw-container" class="space-y-2 max-h-60 overflow-y-auto pr-1"></div>
-            <button onclick="closeDayHwModal()" class="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs py-2.5 rounded-xl font-medium transition">Закрыть</button>
+            <button onclick="closeDayHwModal()" class="w-full btn-chocolate text-white text-xs py-2.5 rounded-xl font-medium transition shadow">Закрыть</button>
         </div>
     </div>
 
@@ -160,8 +158,8 @@ HTML_TEMPLATE = """
 
         function setWeek(type) {
             activeWeekType = type;
-            document.getElementById('week-btn-current').className = type === 'current' ? "flex-1 py-1.5 text-xs font-medium rounded bg-zinc-800 text-white shadow" : "flex-1 py-1.5 text-xs font-medium rounded text-zinc-400";
-            document.getElementById('week-btn-next').className = type === 'next' ? "flex-1 py-1.5 text-xs font-medium rounded bg-zinc-800 text-white shadow" : "flex-1 py-1.5 text-xs font-medium rounded text-zinc-400";
+            document.getElementById('week-btn-current').className = type === 'current' ? "flex-1 py-1.5 text-xs font-medium rounded btn-chocolate text-white shadow" : "flex-1 py-1.5 text-xs font-medium rounded text-zinc-400";
+            document.getElementById('week-btn-next').className = type === 'next' ? "flex-1 py-1.5 text-xs font-medium rounded btn-chocolate text-white shadow" : "flex-1 py-1.5 text-xs font-medium rounded text-zinc-400";
             renderSchedule();
         }
 
@@ -180,11 +178,11 @@ HTML_TEMPLATE = """
                         ${day.lessons.length > 0 ? day.lessons.map(l => `<li class="py-0.5">• ${l}</li>`).join('') : '<li class="text-zinc-500 italic">Пар нет 🎉</li>'}
                     </ul>
                     <div class="absolute bottom-2.5 left-3 right-3 flex justify-between items-center pt-2 border-t border-custom-border/50">
-                        <button onclick="openDayHwModal('${day.full_date}', '${day.day}', '${day.date}')" class="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-2.5 py-1 rounded-lg text-[11px] font-medium transition flex items-center gap-1 border border-custom-border">
+                        <button onclick="openDayHwModal('${day.full_date}', '${day.day}', '${day.date}')" class="btn-chocolate text-white px-2.5 py-1 rounded-lg text-[11px] font-medium transition flex items-center gap-1 shadow">
                             📖 Просмотреть ДЗ
                         </button>
                         ${appData.is_admin ? `
-                            <button onclick="openEditModal('${day.day}')" class="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-2.5 py-1 rounded-lg text-[11px] font-medium transition flex items-center gap-1 border border-custom-border">
+                            <button onclick="openEditModal('${day.day}')" class="btn-chocolate text-white px-2.5 py-1 rounded-lg text-[11px] font-medium transition flex items-center gap-1 shadow">
                                 ✏️ Изменить
                             </button>
                         ` : ''}
@@ -344,7 +342,7 @@ HTML_TEMPLATE = """
                 <div class="bg-custom-card p-3.5 rounded-xl border border-custom-border space-y-1 shadow-md">
                     <div class="flex justify-between items-center">
                         <span class="font-semibold text-zinc-200 text-sm">${hw.subject}</span>
-                        <span class="text-[11px] bg-zinc-800 text-zinc-300 px-2 py-0.5 rounded border border-custom-border">${hw.date_key}</span>
+                        <span class="text-[11px] btn-chocolate text-white px-2 py-0.5 rounded">${hw.date_key}</span>
                     </div>
                     <p class="text-xs text-zinc-300 whitespace-pre-wrap">${hw.task}</p>
                     <div class="text-[10px] text-zinc-500 text-right">Автор: ${hw.author}</div>
@@ -637,7 +635,6 @@ def get_group_keyboard():
 
 
 def get_group_inline():
-    """Инлайн-кнопка с НАСТОЯЩИМ WebApp для групп."""
     kb = types.InlineKeyboardMarkup()
     kb.add(
         types.InlineKeyboardButton(
