@@ -15,6 +15,7 @@ from zoneinfo import ZoneInfo
 import telebot
 from flask import Flask, jsonify, request
 from telebot import types
+from werkzeug.exceptions import HTTPException
 
 # --- НАСТРОЙКИ И ОКРУЖЕНИЕ ---
 TOKEN = os.environ.get("BOT_TOKEN")
@@ -33,6 +34,7 @@ MINIAPP_SHORT_NAME = "ezs"
 WEBAPP_URL = "https://web-production-a6d39d86.up.railway.app/webapp"
 AUTH_MAX_AGE = 86400    # срок действия initData, секунд
 ADMIN_LINK_TTL = 86400  # срок действия личной админ-ссылки, секунд
+ALERT_COOLDOWN = 600    # одинаковое уведомление не чаще раза в 10 минут, секунд
 
 logging.basicConfig(
     level=logging.INFO,
@@ -56,6 +58,39 @@ if not BOT_USERNAME:
     raise RuntimeError("Не удалось получить username бота через get_me()")
 
 db_lock = Lock()
+
+
+# --- УВЕДОМЛЕНИЯ АДМИНИСТРАТОРАМ ---
+_alert_last_sent = {}
+_alert_lock = Lock()
+
+
+def notify_admins(text, key=None):
+    """Пишет каждому админу в личку. Одинаковые уведомления (по key) не чаще раза в ALERT_COOLDOWN."""
+    key = key or text[:80]
+    now = time.time()
+    with _alert_lock:
+        if now - _alert_last_sent.get(key, 0) < ALERT_COOLDOWN:
+            return
+        _alert_last_sent[key] = now
+
+    for admin_id in ADMINS:
+        try:
+            bot.send_message(admin_id, text[:3900])
+        except Exception as e:
+            log.error("Не удалось отправить уведомление админу %s: %s", admin_id, e)
+
+
+class PollingAlertHandler:
+    """Вызывается telebot при ошибке опроса Telegram. Возврат True означает: продолжать работу."""
+
+    def handle(self, exception):
+        log.error("Ошибка опроса Telegram: %s", exception)
+        notify_admins(
+            f"⚠️ Проблема с опросом Telegram:\n{type(exception).__name__}: {exception}",
+            key=f"poll:{type(exception).__name__}",
+        )
+        return True
 
 
 @contextmanager
@@ -308,11 +343,23 @@ HTML_TEMPLATE = r"""
             const container = document.getElementById('schedule-container');
             const schedule = activeWeekType === 'current' ? appData.current_week : appData.next_week;
 
-            container.innerHTML = schedule.map(day => `
-                <div class="bg-custom-card p-3.5 rounded-xl border border-custom-border relative pb-11 shadow-md">
+            container.innerHTML = schedule.map(day => {
+                const isToday = day.full_date === appData.today_date;
+                const cardClass = isToday
+                    ? 'bg-custom-card p-3.5 rounded-xl relative pb-11'
+                    : 'bg-custom-card p-3.5 rounded-xl border border-custom-border relative pb-11 shadow-md';
+                const cardStyle = isToday
+                    ? 'border:2px solid #39ff14;box-shadow:0 0 14px rgba(57,255,20,0.75)'
+                    : '';
+                const todayTag = isToday
+                    ? '<span class="text-[10px] font-bold text-[#39ff14] mr-2">СЕГОДНЯ</span>'
+                    : '';
+
+                return `
+                <div class="${cardClass}" style="${cardStyle}">
                     <div class="flex justify-between items-center mb-2">
                         <span class="font-semibold text-zinc-200 text-sm">${esc(day.day)}</span>
-                        <span class="text-xs text-zinc-400">${esc(day.date)}</span>
+                        <span class="text-xs text-zinc-400">${todayTag}${esc(day.date)}</span>
                     </div>
                     <ul class="space-y-1 text-xs text-zinc-300 mb-2">
                         ${day.lessons.length > 0 ? day.lessons.map(l => `<li class="py-0.5">• ${esc(l)}</li>`).join('') : '<li class="text-zinc-500 italic">Пар нет 🎉</li>'}
@@ -328,7 +375,8 @@ HTML_TEMPLATE = r"""
                         ` : ''}
                     </div>
                 </div>
-            `).join('');
+                `;
+            }).join('');
         }
 
         function openDayHwModal(fullDateStr, dayName, shortDateStr) {
@@ -515,6 +563,18 @@ HTML_TEMPLATE = r"""
 
 # --- FLASK ---
 app = Flask(__name__)
+
+
+@app.errorhandler(Exception)
+def handle_web_exception(e):
+    if isinstance(e, HTTPException):
+        return e
+    log.exception("Ошибка веб-сервера на %s", request.path)
+    notify_admins(
+        f"🔥 Ошибка в веб-части бота\nМаршрут: {request.path}\n{type(e).__name__}: {e}",
+        key=f"web:{type(e).__name__}:{request.path}",
+    )
+    return jsonify({"status": "error", "message": "Внутренняя ошибка сервера"}), 500
 
 
 @app.route("/")
@@ -856,6 +916,10 @@ def send_safe(chat_id, text, markup=None):
         return True
     except Exception as e:
         log.error("Не удалось отправить сообщение в чат %s: %s", chat_id, e, exc_info=True)
+        notify_admins(
+            f"⚠️ Не удалось отправить сообщение в чат {chat_id}:\n{e}",
+            key=f"send:{chat_id}",
+        )
         return False
 
 
@@ -921,6 +985,7 @@ def on_text(message):
             send_safe(message.chat.id, "Мини-приложение группы:", get_group_inline())
     except Exception as e:
         log.error("Ошибка обработки кнопки: %s", e, exc_info=True)
+        notify_admins(f"⚠️ Ошибка обработки кнопки бота:\n{type(e).__name__}: {e}", key=f"button:{type(e).__name__}")
 
 
 def log_updates(messages):
@@ -932,16 +997,32 @@ def log_updates(messages):
 if __name__ == "__main__":
     def run_server():
         port = int(os.environ.get("PORT", 5000))
-        app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
+        try:
+            app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
+        except Exception as e:
+            log.exception("Веб-сервер остановился")
+            notify_admins(f"🔥 Веб-сервер остановился: {type(e).__name__}: {e}", key="flask-stopped")
 
     Thread(target=run_server, daemon=True).start()
     log.info("Flask сервер запущен.")
 
     bot.set_update_listener(log_updates)
-    bot.remove_webhook()
-    bot.infinity_polling(
-        timeout=60,
-        long_polling_timeout=60,
-        skip_pending=True,
-        allowed_updates=telebot.util.update_types,
-    )
+    try:
+        bot.remove_webhook()
+    except Exception as e:
+        log.warning("Не удалось снять webhook: %s", e)
+
+    notify_admins("✅ Бот запущен и работает.", key="startup")
+
+    try:
+        bot.infinity_polling(
+            timeout=60,
+            long_polling_timeout=60,
+            skip_pending=True,
+            allowed_updates=telebot.util.update_types,
+            exception_handler=PollingAlertHandler(),
+        )
+    except Exception as e:
+        log.exception("Опрос Telegram остановлен")
+        notify_admins(f"🔥 Бот остановлен из-за ошибки: {type(e).__name__}: {e}", key="polling-stopped")
+        raise
