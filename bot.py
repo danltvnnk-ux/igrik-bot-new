@@ -31,7 +31,8 @@ BY_TZ = ZoneInfo("Europe/Minsk")
 DB_FILE = os.environ.get("DB_PATH", "bot_webapp_data.db")
 MINIAPP_SHORT_NAME = "ezs"
 WEBAPP_URL = "https://web-production-a6d39d86.up.railway.app/webapp"
-AUTH_MAX_AGE = 86400  # срок действия initData, секунд
+AUTH_MAX_AGE = 86400    # срок действия initData, секунд
+ADMIN_LINK_TTL = 86400  # срок действия личной админ-ссылки, секунд
 
 logging.basicConfig(
     level=logging.INFO,
@@ -103,6 +104,49 @@ def verify_init_data(init_data):
         return None, None, None
 
 
+# --- ЛИЧНАЯ АДМИН-ССЫЛКА (не зависит от клиента Telegram) ---
+def _admin_link_key():
+    return hashlib.sha256(b"admin-link|" + TOKEN.encode()).digest()
+
+
+def make_admin_token(user_id):
+    """Токен вида <user_id>.<exp>.<подпись>. Выдаётся только админам командой /admin в личке."""
+    exp = int(time.time()) + ADMIN_LINK_TTL
+    payload = f"{user_id}.{exp}"
+    sig = hmac.new(_admin_link_key(), payload.encode(), hashlib.sha256).hexdigest()
+    return f"{payload}.{sig}"
+
+
+def verify_admin_token(token):
+    """Возвращает user_id, если токен подписан, не истёк и принадлежит админу, иначе None."""
+    if not token:
+        return None
+    try:
+        uid_s, exp_s, sig = token.split(".")
+        payload = f"{uid_s}.{exp_s}"
+        calc = hmac.new(_admin_link_key(), payload.encode(), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(calc, sig):
+            return None
+        if int(exp_s) < time.time():
+            return None
+        uid = int(uid_s)
+        return uid if uid in ADMINS else None
+    except Exception:
+        return None
+
+
+def get_request_user():
+    """Определяет пользователя по initData Telegram или по личной админ-ссылке.
+    Возвращает (user_id, first_name, last_name)."""
+    user_id, first_name, last_name = verify_init_data(request.headers.get("X-Telegram-Init-Data", ""))
+    if user_id is not None:
+        return user_id, first_name, last_name
+    uid = verify_admin_token(request.headers.get("X-Auth-Token", ""))
+    if uid is not None:
+        return uid, "Админ", ""
+    return None, None, None
+
+
 # --- ИНТЕРФЕЙС МИНИ-ПРИЛОЖЕНИЯ ---
 # raw-строка: обратные слеши в JS (например, \s в регулярке) сохраняются как есть
 HTML_TEMPLATE = r"""
@@ -131,9 +175,7 @@ HTML_TEMPLATE = r"""
             <span id="admin-badge" class="hidden btn-chocolate text-white text-xs px-2.5 py-1 rounded-full font-medium shadow">Админ</span>
         </header>
 
-        <div id="auth-note" class="hidden text-xs text-amber-300 bg-amber-950/40 border border-amber-900/50 rounded-lg p-2 mb-4">
-            Откройте приложение из Telegram: только так определяются права админа.
-        </div>
+        <div id="auth-note" class="hidden text-xs text-amber-300 bg-amber-950/40 border border-amber-900/50 rounded-lg p-2 mb-4"></div>
 
         <!-- Вкладки -->
         <div class="flex bg-custom-card border border-custom-border p-1 rounded-xl mb-6 shadow-lg">
@@ -201,6 +243,8 @@ HTML_TEMPLATE = r"""
         const tg = window.Telegram.WebApp;
         tg.expand();
 
+        const authToken = new URLSearchParams(window.location.search).get('t') || '';
+
         let appData = null;
         let activeWeekType = 'current';
         let editingDay = null;
@@ -209,17 +253,25 @@ HTML_TEMPLATE = r"""
         const esc = s => String(s ?? '').replace(/[&<>"']/g,
             c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
+        function authHeaders(withJson) {
+            const h = {};
+            if (withJson) h['Content-Type'] = 'application/json';
+            if (tg.initData) h['X-Telegram-Init-Data'] = tg.initData;
+            if (authToken) h['X-Auth-Token'] = authToken;
+            return h;
+        }
+
         window.addEventListener('DOMContentLoaded', () => {
             loadData();
         });
 
         function loadData() {
-            if (!tg.initData) {
-                document.getElementById('auth-note').classList.remove('hidden');
+            if (!tg.initData && !authToken) {
+                const note = document.getElementById('auth-note');
+                note.textContent = `Права админа не определены: Telegram (${tg.platform || '?'}, ${tg.version || '?'}) не передал данные. Отправьте боту /admin в личке и откройте приложение по кнопке оттуда.`;
+                note.classList.remove('hidden');
             }
-            fetch('/api/data', {
-                headers: { 'X-Telegram-Init-Data': tg.initData || '' }
-            })
+            fetch('/api/data', { headers: authHeaders(false) })
             .then(res => res.json())
             .then(data => {
                 appData = data;
@@ -401,10 +453,7 @@ HTML_TEMPLATE = r"""
 
             fetch('/api/schedule', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-Telegram-Init-Data': tg.initData || ''
-                },
+                headers: authHeaders(true),
                 body: JSON.stringify({
                     day: editingDay,
                     week_type: weekTypeNum,
@@ -447,10 +496,7 @@ HTML_TEMPLATE = r"""
 
             fetch('/api/homework', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-Telegram-Init-Data': tg.initData || ''
-                },
+                headers: authHeaders(true),
                 body: JSON.stringify({ date_key: dateKey, subject, task })
             }).then(res => res.json()).then(data => {
                 if (data.status === 'success') {
@@ -651,14 +697,9 @@ def get_day_schedule_for_date(target_date):
 # --- API ---
 @app.route("/api/data", methods=["GET"])
 def get_api_data():
-    raw_init = request.headers.get("X-Telegram-Init-Data", "")
-    user_id, _, _ = verify_init_data(raw_init)
+    user_id, _, _ = get_request_user()
     is_admin = user_id in ADMINS if user_id else False
-
-    if user_id is None:
-        log.warning("api/data: initData не прошла проверку (длина заголовка=%s)", len(raw_init))
-    else:
-        log.info("api/data: user_id=%s admin=%s", user_id, is_admin)
+    log.info("api/data: user_id=%s admin=%s", user_id, is_admin)
 
     today = get_now().date()
     current_week_schedule = get_week_schedule_data(today, shift_weeks=0)
@@ -680,7 +721,7 @@ def get_api_data():
 
 @app.route("/api/schedule", methods=["POST"])
 def update_schedule():
-    user_id, _, _ = verify_init_data(request.headers.get("X-Telegram-Init-Data", ""))
+    user_id, _, _ = get_request_user()
     if user_id not in ADMINS:
         return jsonify({"status": "error", "message": "Нет прав админа"}), 403
 
@@ -712,7 +753,7 @@ def update_schedule():
 
 @app.route("/api/homework", methods=["POST"])
 def add_homework():
-    user_id, first_name, last_name = verify_init_data(request.headers.get("X-Telegram-Init-Data", ""))
+    user_id, first_name, last_name = get_request_user()
     if user_id is None:
         return jsonify({"status": "error", "message": "Нет доступа"}), 403
 
@@ -826,6 +867,25 @@ def cmd_start(message):
     else:
         send_safe(message.chat.id, "Привет! Кнопки ниже:", get_group_keyboard())
         send_safe(message.chat.id, "Мини-приложение группы:", get_group_inline())
+
+
+@bot.message_handler(commands=["admin"])
+def cmd_admin(message):
+    if message.chat.type != "private":
+        send_safe(message.chat.id, "Команда /admin работает только в личке с ботом.")
+        return
+    if message.from_user.id not in ADMINS:
+        send_safe(message.chat.id, "У вас нет прав администратора.")
+        return
+    token = make_admin_token(message.from_user.id)
+    kb = types.InlineKeyboardMarkup()
+    kb.add(
+        types.InlineKeyboardButton(
+            "🛠 Открыть как админ",
+            web_app=types.WebAppInfo(url=f"{WEBAPP_URL}?t={token}"),
+        )
+    )
+    send_safe(message.chat.id, f"Личная ссылка администратора, действует {ADMIN_LINK_TTL // 3600} ч. Не пересылайте её:", kb)
 
 
 @bot.message_handler(commands=["myid"])
