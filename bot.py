@@ -26,7 +26,7 @@ log = logging.getLogger("IgrikWebAppBot")
 apihelper.proxy = None
 bot = telebot.TeleBot(TOKEN)
 
-# --- ИНТЕРФЕЙС МИНИ-ПРИЛОЖЕНИЯ В ЦВЕТАХ СЕРДЕЧЕК ---
+# --- ИНТЕРФЕЙС МИНИ-ПРИЛОЖЕНИЯ (С ПРАВИЛЬНЫМ УЧЕТОМ ПАР И УРОКОВ) ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="ru">
@@ -235,12 +235,11 @@ HTML_TEMPLATE = """
             editingDay = null;
         }
 
-        const STANDARD_TIMES = [
+        // Тайминги ровно для 3 пар
+        const PAIR_TIMES = [
             "08.30-10.10",
             "10.20-12.00",
-            "12.40-14.20",
-            "14.30-16.10",
-            "15.25-17.05"
+            "12.40-14.20"
         ];
 
         function renderModalLessons() {
@@ -299,14 +298,17 @@ HTML_TEMPLATE = """
                 
                 let positionNum = idx + 1;
                 if (positionNum <= 3) {
-                    let timeStr = STANDARD_TIMES[idx] || "08.30-10.10";
+                    // Первые 3 — строго пары со стандартным временем
+                    let timeStr = PAIR_TIMES[idx];
                     formattedLessons.push(`${positionNum} пара (${timeStr}): ${subjName}`);
-                } else if (positionNum === 7) {
+                } else if (positionNum === 4) {
+                    // 4-й элемент (если есть) становится 7 уроком
                     formattedLessons.push(`7 урок (14.30-15.15): ${subjName}`);
-                } else if (positionNum === 8) {
-                    formattedLessons.push(`8 урок (15.25-17.05): ${subjName}`);
+                } else if (positionNum === 5) {
+                    // 5-й элемент становится 8,9 уроком
+                    formattedLessons.push(`8,9 урок (15.25-17.05): ${subjName}`);
                 } else {
-                    formattedLessons.push(`${positionNum} пара: ${subjName}`);
+                    formattedLessons.push(`${positionNum} урок: ${subjName}`);
                 }
             });
 
@@ -409,13 +411,13 @@ SCHEDULE = {
             "1 пара (08.30-10.10): Биология",
             "2 пара (10.20-12.00): Рус. лит",
             "3 пара (12.40-14.20): Физика",
-            "4 пара (14.30-16.10): МП",
+            "7 урок (14.30-15.15): МП",
         ],
         [
             "1 пара (08.30-10.10): Биология",
             "2 пара (10.20-12.00): Рус. лит",
             "3 пара (12.40-14.20): Физика",
-            "4 пара (14.30-16.10): МП",
+            "7 урок (14.30-15.15): МП",
         ],
     ],
     "Среда": [
@@ -428,7 +430,7 @@ SCHEDULE = {
             "1 пара (08.30-10.10): Матем",
             "2 пара (10.20-12.00): Бел. лит",
             "3 пара (12.40-14.20): География",
-            "4 пара (14.30-16.10): Информ",
+            "7 урок (14.30-15.15): Информ",
         ],
     ],
     "Четверг": [
