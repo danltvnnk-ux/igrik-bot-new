@@ -727,23 +727,27 @@ def add_homework():
 
 
 # --- КЛАВИАТУРЫ ---
+APP_BUTTON_TEXT = "🚀 Открыть приложение ЭЗС 12-26"
+
+
 def get_private_keyboard():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, is_persistent=True)
+    markup.add(types.KeyboardButton("📅 На сегодня"), types.KeyboardButton("📅 На завтра"))
     markup.add(
         types.KeyboardButton(
-            "🚀 Открыть приложение ЭЗС 12-26",
+            APP_BUTTON_TEXT,
             web_app=types.WebAppInfo(url=WEBAPP_URL),
         )
     )
-    markup.add(types.KeyboardButton("📅 На сегодня"), types.KeyboardButton("📅 На завтра"))
-    markup.add(types.KeyboardButton("📋 Расписание на неделю"))
     return markup
 
 
 def get_group_keyboard():
+    # В группах кнопка с web_app не открывает приложение, поэтому
+    # эта кнопка отправляет текст, а бот отвечает ссылкой на приложение
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, is_persistent=True)
     markup.add(types.KeyboardButton("📅 На сегодня"), types.KeyboardButton("📅 На завтра"))
-    markup.add(types.KeyboardButton("📋 Расписание на неделю"))
+    markup.add(types.KeyboardButton(APP_BUTTON_TEXT))
     return markup
 
 
@@ -765,7 +769,7 @@ def keyboard_for(message):
 BUTTON_ACTIONS = {
     "📅 на сегодня": "today",
     "📅 на завтра": "tomorrow",
-    "📋 расписание на неделю": "week",
+    APP_BUTTON_TEXT.lower(): "app",
 }
 
 
@@ -803,8 +807,13 @@ def cmd_start(message):
     if message.chat.type == "private":
         send_safe(message.chat.id, "Привет! Используйте кнопки ниже:", get_private_keyboard())
     else:
-        send_safe(message.chat.id, "Привет! Кнопки расписания ниже:", get_group_keyboard())
+        send_safe(message.chat.id, "Привет! Кнопки ниже:", get_group_keyboard())
         send_safe(message.chat.id, "Мини-приложение группы:", get_group_inline())
+
+
+@bot.message_handler(commands=["week"])
+def cmd_week(message):
+    send_safe(message.chat.id, format_week(), keyboard_for(message))
 
 
 @bot.message_handler(content_types=["text"])
@@ -814,7 +823,7 @@ def on_text(message):
 
     if action is None:
         if message.chat.type == "private" and text in ("меню", "приложение"):
-            send_safe(message.chat.id, "Привет! Используйте кнопки меню ниже:", get_private_keyboard())
+            send_safe(message.chat.id, "Используйте кнопки меню ниже:", get_private_keyboard())
         return
 
     try:
@@ -824,8 +833,8 @@ def on_text(message):
             send_safe(message.chat.id, format_day(today, "Сегодня"), markup)
         elif action == "tomorrow":
             send_safe(message.chat.id, format_day(today + timedelta(days=1), "Завтра"), markup)
-        elif action == "week":
-            send_safe(message.chat.id, format_week(), markup)
+        elif action == "app":
+            send_safe(message.chat.id, "Мини-приложение группы:", get_group_inline())
     except Exception as e:
         log.error("Ошибка обработки кнопки: %s", e, exc_info=True)
 
