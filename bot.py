@@ -957,36 +957,36 @@ def log_updates(messages):
         log.info("update: chat_id=%s type=%s", m.chat.id, m.chat.type)
 
 
-# --- ЗАПУСК ---
+# --- ЗАПУСК (Фласк в главном потоке, бот в фоновом) ---
 if __name__ == "__main__":
-    def run_server():
-        port = int(os.environ.com.get("PORT", 5000)) if hasattr(os.environ, "com") else int(os.environ.get("PORT", 5000))
-        try:
-            app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
-        except Exception as e:
-            log.exception("Веб-сервер остановился")
-            notify_admins(f"🔥 Веб-сервер остановился: {type(e).__name__}: {e}", key="flask-stopped")
+    def run_bot():
+        bot.set_update_listener(log_updates)
+        bot.remove_webhook()
+        notify_admins("✅ Бот запущен и работает.", key="startup")
+        while True:
+            try:
+                bot.infinity_polling(
+                    timeout=60,
+                    long_polling_timeout=60,
+                    skip_pending=True,
+                    allowed_updates=telebot.util.update_types,
+                )
+            except Exception as e:
+                log.exception("Опрос Telegram прервался")
+                notify_admins(
+                    f"🔥 Бот споткнулся, перезапускаю опрос: {type(e).__name__}: {e}",
+                    key=f"poll:{type(e).__name__}",
+                )
+                time.sleep(10)
 
-    Thread(target=run_server, daemon=True).start()
-    log.info("Flask сервер запущен.")
+    # Запускаем бота в фоновом потоке, чтобы главный поток был свободен для Flask (требование Railway)
+    Thread(target=run_bot, daemon=True).start()
+    log.info("Telegram бот запущен в фоне.")
 
-    bot.set_update_listener(log_updates)
-    bot.remove_webhook()
-
-    notify_admins("✅ Бот запущен и работает.", key="startup")
-
-    while True:
-        try:
-            bot.infinity_polling(
-                timeout=60,
-                long_polling_timeout=60,
-                skip_pending=True,
-                allowed_updates=telebot.util.update_types,
-            )
-        except Exception as e:
-            log.exception("Опрос Telegram прервался")
-            notify_admins(
-                f"🔥 Бот споткнулся, перезапускаю опрос: {type(e).__name__}: {e}",
-                key=f"poll:{type(e).__name__}",
-            )
-            time.sleep(10)
+    port = int(os.environ.get("PORT", 5000))
+    log.info("Запуск Flask сервера на порту %s...", port)
+    try:
+        app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
+    except Exception as e:
+        log.exception("Веб-сервер остановился")
+        notify_admins(f"🔥 Веб-сервер остановился: {type(e).__name__}: {e}", key="flask-stopped")
