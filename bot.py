@@ -131,6 +131,10 @@ HTML_TEMPLATE = r"""
             <span id="admin-badge" class="hidden btn-chocolate text-white text-xs px-2.5 py-1 rounded-full font-medium shadow">Админ</span>
         </header>
 
+        <div id="auth-note" class="hidden text-xs text-amber-300 bg-amber-950/40 border border-amber-900/50 rounded-lg p-2 mb-4">
+            Откройте приложение из Telegram: только так определяются права админа.
+        </div>
+
         <!-- Вкладки -->
         <div class="flex bg-custom-card border border-custom-border p-1 rounded-xl mb-6 shadow-lg">
             <button onclick="switchTab('schedule')" id="btn-schedule" class="flex-1 py-2 text-sm font-medium rounded-lg btn-chocolate text-white transition">Расписание</button>
@@ -210,6 +214,9 @@ HTML_TEMPLATE = r"""
         });
 
         function loadData() {
+            if (!tg.initData) {
+                document.getElementById('auth-note').classList.remove('hidden');
+            }
             fetch('/api/data', {
                 headers: { 'X-Telegram-Init-Data': tg.initData || '' }
             })
@@ -471,7 +478,11 @@ def home():
 
 @app.route("/webapp")
 def webapp_page():
-    return HTML_TEMPLATE, 200, {"Content-Type": "text/html; charset=utf-8"}
+    # Запрет кэширования: Telegram не должен показывать старую версию страницы
+    return HTML_TEMPLATE, 200, {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+    }
 
 
 # --- РАСПИСАНИЕ ЭЗС 12-26 ---
@@ -640,8 +651,14 @@ def get_day_schedule_for_date(target_date):
 # --- API ---
 @app.route("/api/data", methods=["GET"])
 def get_api_data():
-    user_id, _, _ = verify_init_data(request.headers.get("X-Telegram-Init-Data", ""))
+    raw_init = request.headers.get("X-Telegram-Init-Data", "")
+    user_id, _, _ = verify_init_data(raw_init)
     is_admin = user_id in ADMINS if user_id else False
+
+    if user_id is None:
+        log.warning("api/data: initData не прошла проверку (длина заголовка=%s)", len(raw_init))
+    else:
+        log.info("api/data: user_id=%s admin=%s", user_id, is_admin)
 
     today = get_now().date()
     current_week_schedule = get_week_schedule_data(today, shift_weeks=0)
@@ -809,6 +826,13 @@ def cmd_start(message):
     else:
         send_safe(message.chat.id, "Привет! Кнопки ниже:", get_group_keyboard())
         send_safe(message.chat.id, "Мини-приложение группы:", get_group_inline())
+
+
+@bot.message_handler(commands=["myid"])
+def cmd_myid(message):
+    uid = message.from_user.id
+    status = "да" if uid in ADMINS else "нет"
+    send_safe(message.chat.id, f"Ваш ID: <code>{uid}</code>\nАдмин: {status}")
 
 
 @bot.message_handler(commands=["week"])
