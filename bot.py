@@ -22,7 +22,6 @@ TOKEN = os.environ.get("BOT_TOKEN")
 if not TOKEN:
     raise RuntimeError("Не задана переменная окружения BOT_TOKEN")
 
-# Оставляем в списке администраторов только твой ID
 _admins_raw = os.environ.get("ADMINS", "6969053096")
 try:
     ADMINS = [int(x.strip()) for x in _admins_raw.split(",") if x.strip()]
@@ -65,7 +64,6 @@ _alert_lock = Lock()
 
 
 def notify_admins(text, key=None):
-    """Пишет админу в личку."""
     key = key or text[:80]
     now = time.time()
     with _alert_lock:
@@ -549,7 +547,7 @@ def handle_web_exception(e):
         f"🔥 Ошибка в веб-части бота\nМаршрут: {request.path}\n{type(e).__name__}: {e}",
         key=f"web:{type(e).__name__}:{request.path}",
     )
-    return jsonify({"status": "error", "message": "Внутренняя ошибка сервера"}}, 500
+    return jsonify({"status": "error", "message": "Внутренняя ошибка сервера"}), 500
 
 
 @app.route("/")
@@ -962,7 +960,7 @@ def log_updates(messages):
 # --- ЗАПУСК ---
 if __name__ == "__main__":
     def run_server():
-        port = int(os.environ.get("PORT", 5000))
+        port = int(os.environ.com.get("PORT", 5000)) if hasattr(os.environ, "com") else int(os.environ.get("PORT", 5000))
         try:
             app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
         except Exception as e:
