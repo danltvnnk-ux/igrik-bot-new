@@ -22,7 +22,8 @@ TOKEN = os.environ.get("BOT_TOKEN")
 if not TOKEN:
     raise RuntimeError("Не задана переменная окружения BOT_TOKEN")
 
-_admins_raw = os.environ.get("ADMINS", "6969053096,5956780231,7000120396")
+# Оставляем в списке администраторов только твой ID
+_admins_raw = os.environ.get("ADMINS", "6969053096")
 try:
     ADMINS = [int(x.strip()) for x in _admins_raw.split(",") if x.strip()]
 except ValueError:
@@ -44,8 +45,6 @@ log = logging.getLogger("IgrikWebAppBot")
 
 bot = telebot.TeleBot(TOKEN)
 
-# Имя бота нужно для ссылки на мини-приложение. Без него ссылка будет неверной,
-# поэтому при ошибке процесс падает сразу, а не работает с неправильной ссылкой.
 BOT_USERNAME = None
 for _attempt in range(3):
     try:
@@ -66,7 +65,7 @@ _alert_lock = Lock()
 
 
 def notify_admins(text, key=None):
-    """Пишет каждому админу в личку. Одинаковое уведомление (по key) не чаще раза в ALERT_COOLDOWN."""
+    """Пишет админу в личку."""
     key = key or text[:80]
     now = time.time()
     with _alert_lock:
@@ -78,7 +77,7 @@ def notify_admins(text, key=None):
         try:
             bot.send_message(admin_id, text[:3900])
         except Exception as e:
-            log.error("Не удалось отправить уведомление админу %s: %s", admin_id, e)
+            log.warning("Не удалось отправить уведомление админу %s: %s", admin_id, e)
 
 
 @contextmanager
@@ -97,7 +96,6 @@ def get_db():
 
 # --- ПРОВЕРКА ПОДПИСИ TELEGRAM INIT DATA ---
 def verify_init_data(init_data):
-    """Возвращает (user_id, first_name, last_name), если подпись и срок действия верны, иначе (None, None, None)."""
     if not init_data:
         return None, None, None
     try:
@@ -106,7 +104,6 @@ def verify_init_data(init_data):
         if not received_hash:
             return None, None, None
 
-        # auth_date обязателен: Telegram всегда его присылает
         auth_date_str = pairs.get("auth_date")
         if not auth_date_str or time.time() - int(auth_date_str) > AUTH_MAX_AGE:
             return None, None, None
@@ -127,13 +124,12 @@ def verify_init_data(init_data):
         return None, None, None
 
 
-# --- ЛИЧНАЯ АДМИН-ССЫЛКА (не зависит от клиента Telegram) ---
+# --- ЛИЧНАЯ АДМИН-ССЫЛКА ---
 def _admin_link_key():
     return hashlib.sha256(b"admin-link|" + TOKEN.encode()).digest()
 
 
 def make_admin_token(user_id):
-    """Токен вида <user_id>.<exp>.<подпись>. Выдаётся только админам командой /admin в личке."""
     exp = int(time.time()) + ADMIN_LINK_TTL
     payload = f"{user_id}.{exp}"
     sig = hmac.new(_admin_link_key(), payload.encode(), hashlib.sha256).hexdigest()
@@ -141,7 +137,6 @@ def make_admin_token(user_id):
 
 
 def verify_admin_token(token):
-    """Возвращает user_id, если токен подписан, не истёк и принадлежит админу, иначе None."""
     if not token:
         return None
     try:
@@ -159,8 +154,6 @@ def verify_admin_token(token):
 
 
 def get_request_user():
-    """Определяет пользователя по initData Telegram или по личной админ-ссылке.
-    Возвращает (user_id, first_name, last_name)."""
     user_id, first_name, last_name = verify_init_data(request.headers.get("X-Telegram-Init-Data", ""))
     if user_id is not None:
         return user_id, first_name, last_name
@@ -171,7 +164,6 @@ def get_request_user():
 
 
 # --- ИНТЕРФЕЙС МИНИ-ПРИЛОЖЕНИЯ ---
-# raw-строка: обратные слеши в JS (например, \s в регулярке) сохраняются как есть
 HTML_TEMPLATE = r"""
 <!DOCTYPE html>
 <html lang="ru">
@@ -289,11 +281,6 @@ HTML_TEMPLATE = r"""
         });
 
         function loadData() {
-            if (!tg.initData && !authToken) {
-                const note = document.getElementById('auth-note');
-                note.textContent = `Права админа не определены: Telegram (${tg.platform || '?'}, ${tg.version || '?'}) не передал данные. Отправьте боту /admin в личке и откройте приложение по кнопке оттуда.`;
-                note.classList.remove('hidden');
-            }
             fetch('/api/data', { headers: authHeaders(false) })
             .then(res => res.json())
             .then(data => {
@@ -562,7 +549,7 @@ def handle_web_exception(e):
         f"🔥 Ошибка в веб-части бота\nМаршрут: {request.path}\n{type(e).__name__}: {e}",
         key=f"web:{type(e).__name__}:{request.path}",
     )
-    return jsonify({"status": "error", "message": "Внутренняя ошибка сервера"}), 500
+    return jsonify({"status": "error", "message": "Внутренняя ошибка сервера"}}, 500
 
 
 @app.route("/")
@@ -572,7 +559,6 @@ def home():
 
 @app.route("/webapp")
 def webapp_page():
-    # Запрет кэширования: Telegram не должен показывать старую версию страницы
     return HTML_TEMPLATE, 200, {
         "Content-Type": "text/html; charset=utf-8",
         "Cache-Control": "no-cache, no-store, must-revalidate",
@@ -747,7 +733,6 @@ def get_day_schedule_for_date(target_date):
 def get_api_data():
     user_id, _, _ = get_request_user()
     is_admin = user_id in ADMINS if user_id else False
-    log.info("api/data: user_id=%s admin=%s", user_id, is_admin)
 
     today = get_now().date()
     current_week_schedule = get_week_schedule_data(today, shift_weeks=0)
@@ -849,8 +834,6 @@ def get_private_keyboard():
 
 
 def get_group_keyboard():
-    # В группах кнопка с web_app не открывает приложение, поэтому
-    # эта кнопка отправляет текст, а бот отвечает ссылкой на приложение
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, is_persistent=True)
     markup.add(types.KeyboardButton("📅 На сегодня"), types.KeyboardButton("📅 На завтра"))
     markup.add(types.KeyboardButton(APP_BUTTON_TEXT))
@@ -904,10 +887,6 @@ def send_safe(chat_id, text, markup=None):
         return True
     except Exception as e:
         log.error("Не удалось отправить сообщение в чат %s: %s", chat_id, e, exc_info=True)
-        notify_admins(
-            f"⚠️ Не удалось отправить сообщение в чат {chat_id}:\n{e}",
-            key=f"send:{chat_id}",
-        )
         return False
 
 
@@ -973,7 +952,6 @@ def on_text(message):
             send_safe(message.chat.id, "Мини-приложение группы:", get_group_inline())
     except Exception as e:
         log.error("Ошибка обработки кнопки: %s", e, exc_info=True)
-        notify_admins(f"⚠️ Ошибка обработки кнопки бота:\n{type(e).__name__}: {e}", key=f"button:{type(e).__name__}")
 
 
 def log_updates(messages):
@@ -999,8 +977,6 @@ if __name__ == "__main__":
 
     notify_admins("✅ Бот запущен и работает.", key="startup")
 
-    # Опрос Telegram. При любой ошибке уведомляем админов и продолжаем работу
-    # (процесс не завершаем, иначе Railway запустит второй экземпляр и будет конфликт 409)
     while True:
         try:
             bot.infinity_polling(
