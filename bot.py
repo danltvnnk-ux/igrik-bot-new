@@ -957,7 +957,7 @@ def log_updates(messages):
         log.info("update: chat_id=%s type=%s", m.chat.id, m.chat.type)
 
 
-# --- ЗАПУСК (Фласк в главном потоке, бот в фоновом) ---
+# --- ЗАПУСК (Фласк на порту PORT от Railway в главном потоке) ---
 if __name__ == "__main__":
     def run_bot():
         bot.set_update_listener(log_updates)
@@ -979,7 +979,7 @@ if __name__ == "__main__":
                 )
                 time.sleep(10)
 
-    # Запускаем бота в фоновом потоке, чтобы главный поток был свободен для Flask (требование Railway)
+    # Запускаем телеграм-бота в фоновом потоке
     Thread(target=run_bot, daemon=True).start()
     log.info("Telegram бот запущен в фоне.")
 
