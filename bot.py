@@ -31,7 +31,7 @@ except ValueError:
 BY_TZ = ZoneInfo("Europe/Minsk")
 DB_FILE = os.environ.get("DB_PATH", "bot_webapp_data.db")
 MINIAPP_SHORT_NAME = "ezs"
-WEBAPP_URL = "https://web-production-a6d39d86.up.railway.app/webapp"
+WEBAPP_URL = "https://igrik-bot-new-production.up.railway.app/webapp"
 AUTH_MAX_AGE = 86400    # срок действия initData, секунд
 ADMIN_LINK_TTL = 86400  # срок действия личной админ-ссылки, секунд
 ALERT_COOLDOWN = 600    # одинаковое уведомление не чаще раза в 10 минут, секунд
