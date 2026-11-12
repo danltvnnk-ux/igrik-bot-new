@@ -26,7 +26,7 @@ log = logging.getLogger("IgrikWebAppBot")
 apihelper.proxy = None
 bot = telebot.TeleBot(TOKEN)
 
-# --- ИНТЕРФЕЙС МИНИ-ПРИЛОЖЕНИЯ ---
+# --- ИНТЕРФЕЙС МИНИ-ПРИЛОЖЕНИЯ (В ЦВЕТАХ СЕРДЕЧЕК: КОРИЧНЕВЫЙ, БЕЛЫЙ, СЕРЕБРЯНЫЙ, ЧЕРНЫЙ) ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="ru">
@@ -36,25 +36,36 @@ HTML_TEMPLATE = """
     <title>ЭЗС 12-26</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Кастомные цвета под палитру сердечек */
+        .bg-custom-dark { background-color: #121212; }
+        .bg-custom-card { background-color: #1a1a1a; }
+        .bg-custom-border { border-color: #333333; }
+        .btn-chocolate { background-color: #8B5A2B; }
+        .btn-chocolate:hover { background-color: #A06835; }
+        .text-chocolate { color: #D2B48C; }
+    </style>
 </head>
-<body class="bg-slate-900 text-slate-100 min-h-screen pb-20">
+<body class="bg-custom-dark text-zinc-100 min-h-screen pb-20">
     <div class="max-w-md mx-auto p-4">
         <header class="flex justify-between items-center mb-6 pt-2">
-            <h1 class="text-xl font-bold text-sky-400">⚡ ЭЗС 12-26</h1>
-            <span id="admin-badge" class="hidden bg-amber-500/20 text-amber-400 text-xs px-2 py-1 rounded-full font-medium">Админ</span>
+            <h1 class="text-xl font-bold text-zinc-100 flex items-center gap-2">
+                <span>🤎</span> ЭЗС 12-26
+            </h1>
+            <span id="admin-badge" class="hidden bg-zinc-800 text-zinc-300 border border-zinc-700 text-xs px-2.5 py-1 rounded-full font-medium">Админ</span>
         </header>
 
         <!-- Вкладки -->
-        <div class="flex bg-slate-800 p-1 rounded-xl mb-6 shadow-lg">
-            <button onclick="switchTab('schedule')" id="btn-schedule" class="flex-1 py-2 text-sm font-medium rounded-lg bg-sky-600 text-white transition">Расписание</button>
-            <button onclick="switchTab('homework')" id="btn-homework" class="flex-1 py-2 text-sm font-medium rounded-lg text-slate-400 transition">Домашка</button>
+        <div class="flex bg-custom-card border border-custom-border p-1 rounded-xl mb-6 shadow-lg">
+            <button onclick="switchTab('schedule')" id="btn-schedule" class="flex-1 py-2 text-sm font-medium rounded-lg btn-chocolate text-white transition">Расписание</button>
+            <button onclick="switchTab('homework')" id="btn-homework" class="flex-1 py-2 text-sm font-medium rounded-lg text-zinc-400 transition">Домашка</button>
         </div>
 
         <!-- РАСПИСАНИЕ -->
         <div id="tab-schedule" class="space-y-4">
-            <div class="flex bg-slate-800 p-1 rounded-lg">
-                <button onclick="setWeek('current')" id="week-btn-current" class="flex-1 py-1.5 text-xs font-medium rounded bg-slate-700 text-white">Эту неделю</button>
-                <button onclick="setWeek('next')" id="week-btn-next" class="flex-1 py-1.5 text-xs font-medium rounded text-slate-400">Следующую</button>
+            <div class="flex bg-custom-card border border-custom-border p-1 rounded-lg">
+                <button onclick="setWeek('current')" id="week-btn-current" class="flex-1 py-1.5 text-xs font-medium rounded bg-zinc-800 text-white shadow">Эту неделю</button>
+                <button onclick="setWeek('next')" id="week-btn-next" class="flex-1 py-1.5 text-xs font-medium rounded text-zinc-400">Следующую</button>
             </div>
 
             <div id="schedule-container" class="space-y-3"></div>
@@ -62,16 +73,16 @@ HTML_TEMPLATE = """
 
         <!-- ДОМАШКА -->
         <div id="tab-homework" class="hidden space-y-4">
-            <div class="bg-slate-800 p-4 rounded-xl border border-slate-700">
-                <h2 class="text-sm font-semibold mb-3 text-sky-300">➕ Добавить домашнее задание</h2>
+            <div class="bg-custom-card p-4 rounded-xl border border-custom-border shadow-md">
+                <h2 class="text-sm font-semibold mb-3 text-zinc-200">➕ Добавить домашнее задание</h2>
                 <form id="hw-form" onsubmit="submitHomework(event)" class="space-y-3">
                     <div>
-                        <label class="block text-[11px] text-slate-400 mb-1">Дата на которую задано:</label>
-                        <input type="date" id="hw-date" required class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm text-slate-200 focus:outline-none focus:border-sky-500">
+                        <label class="block text-[11px] text-zinc-400 mb-1">Дата на которую задано:</label>
+                        <input type="date" id="hw-date" required class="w-full bg-custom-dark border border-custom-border rounded-lg p-2.5 text-sm text-zinc-200 focus:outline-none focus:border-zinc-500">
                     </div>
-                    <input type="text" id="hw-subject" placeholder="Предмет (например, Физика)" required class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm focus:outline-none focus:border-sky-500">
-                    <textarea id="hw-task" placeholder="Что задали..." rows="2" required class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm focus:outline-none focus:border-sky-500"></textarea>
-                    <button type="submit" class="w-full bg-sky-600 hover:bg-sky-500 text-white py-2.5 rounded-lg text-sm font-medium transition">Опубликовать</button>
+                    <input type="text" id="hw-subject" placeholder="Предмет (например, Физика)" required class="w-full bg-custom-dark border border-custom-border rounded-lg p-2.5 text-sm text-zinc-200 focus:outline-none focus:border-zinc-500">
+                    <textarea id="hw-task" placeholder="Что задали..." rows="2" required class="w-full bg-custom-dark border border-custom-border rounded-lg p-2.5 text-sm text-zinc-200 focus:outline-none focus:border-zinc-500"></textarea>
+                    <button type="submit" class="w-full btn-chocolate text-white py-2.5 rounded-lg text-sm font-medium transition shadow">Опубликовать</button>
                 </form>
             </div>
             <div id="homework-container" class="space-y-3"></div>
@@ -79,29 +90,29 @@ HTML_TEMPLATE = """
     </div>
 
     <!-- МОДАЛЬНОЕ ОКНО ПРОСМОТРА ДЗ ДНЯ -->
-    <div id="day-hw-modal" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-        <div class="bg-slate-800 border border-slate-700 w-full max-w-sm rounded-2xl p-4 space-y-4 shadow-2xl">
+    <div id="day-hw-modal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-custom-card border border-custom-border w-full max-w-sm rounded-2xl p-4 space-y-4 shadow-2xl">
             <div class="flex justify-between items-center">
-                <h3 id="day-hw-modal-title" class="text-sm font-semibold text-sky-400">Домашнее задание</h3>
-                <button onclick="closeDayHwModal()" class="text-slate-400 hover:text-white text-sm font-bold">✕</button>
+                <h3 id="day-hw-modal-title" class="text-sm font-semibold text-zinc-200">Домашнее задание</h3>
+                <button onclick="closeDayHwModal()" class="text-zinc-400 hover:text-white text-sm font-bold">✕</button>
             </div>
             <div id="day-hw-container" class="space-y-2 max-h-60 overflow-y-auto pr-1"></div>
-            <button onclick="closeDayHwModal()" class="w-full bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs py-2.5 rounded-xl font-medium transition">Закрыть</button>
+            <button onclick="closeDayHwModal()" class="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs py-2.5 rounded-xl font-medium transition">Закрыть</button>
         </div>
     </div>
 
     <!-- МОДАЛЬНОЕ ОКНО РЕДАКТИРОВАНИЯ ДНЯ -->
-    <div id="edit-modal" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-        <div class="bg-slate-800 border border-slate-700 w-full max-w-sm rounded-2xl p-4 space-y-4 shadow-2xl">
+    <div id="edit-modal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-custom-card border border-custom-border w-full max-w-sm rounded-2xl p-4 space-y-4 shadow-2xl">
             <div class="flex justify-between items-center">
-                <h3 id="modal-title" class="text-sm font-semibold text-amber-400">Редактирование дня</h3>
-                <button onclick="closeEditModal()" class="text-slate-400 hover:text-white text-sm font-bold">✕</button>
+                <h3 id="modal-title" class="text-sm font-semibold text-zinc-200">Редактирование дня</h3>
+                <button onclick="closeEditModal()" class="text-zinc-400 hover:text-white text-sm font-bold">✕</button>
             </div>
             <div id="modal-lessons-container" class="space-y-2 max-h-60 overflow-y-auto pr-1"></div>
-            <button onclick="addLessonInput()" class="w-full bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs py-2 rounded-lg font-medium transition">➕ Добавить пару / урок</button>
+            <button onclick="addLessonInput()" class="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs py-2 rounded-lg font-medium transition border border-custom-border">➕ Добавить пару / урок</button>
             <div class="flex gap-2 pt-2">
-                <button onclick="closeEditModal()" class="flex-1 bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs py-2.5 rounded-xl font-medium transition">Отмена</button>
-                <button onclick="saveDaySchedule()" class="flex-1 bg-amber-600 hover:bg-amber-500 text-white text-xs py-2.5 rounded-xl font-medium transition">Сохранить</button>
+                <button onclick="closeEditModal()" class="flex-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs py-2.5 rounded-xl font-medium transition">Отмена</button>
+                <button onclick="saveDaySchedule()" class="flex-1 btn-chocolate text-white text-xs py-2.5 rounded-xl font-medium transition shadow">Сохранить</button>
             </div>
         </div>
     </div>
@@ -141,16 +152,16 @@ HTML_TEMPLATE = """
         function switchTab(tab) {
             ['schedule', 'homework'].forEach(t => {
                 document.getElementById(`tab-${t}`).classList.add('hidden');
-                document.getElementById(`btn-${t}`).className = "flex-1 py-2 text-sm font-medium rounded-lg text-slate-400 transition";
+                document.getElementById(`btn-${t}`).className = "flex-1 py-2 text-sm font-medium rounded-lg text-zinc-400 transition";
             });
             document.getElementById(`tab-${tab}`).classList.remove('hidden');
-            document.getElementById(`btn-${tab}`).className = "flex-1 py-2 text-sm font-medium rounded-lg bg-sky-600 text-white transition";
+            document.getElementById(`btn-${tab}`).className = "flex-1 py-2 text-sm font-medium rounded-lg btn-chocolate text-white transition";
         }
 
         function setWeek(type) {
             activeWeekType = type;
-            document.getElementById('week-btn-current').className = type === 'current' ? "flex-1 py-1.5 text-xs font-medium rounded bg-slate-700 text-white" : "flex-1 py-1.5 text-xs font-medium rounded text-slate-400";
-            document.getElementById('week-btn-next').className = type === 'next' ? "flex-1 py-1.5 text-xs font-medium rounded bg-slate-700 text-white" : "flex-1 py-1.5 text-xs font-medium rounded text-slate-400";
+            document.getElementById('week-btn-current').className = type === 'current' ? "flex-1 py-1.5 text-xs font-medium rounded bg-zinc-800 text-white shadow" : "flex-1 py-1.5 text-xs font-medium rounded text-zinc-400";
+            document.getElementById('week-btn-next').className = type === 'next' ? "flex-1 py-1.5 text-xs font-medium rounded bg-zinc-800 text-white shadow" : "flex-1 py-1.5 text-xs font-medium rounded text-zinc-400";
             renderSchedule();
         }
 
@@ -160,20 +171,20 @@ HTML_TEMPLATE = """
             const schedule = activeWeekType === 'current' ? appData.current_week : appData.next_week;
             
             container.innerHTML = schedule.map(day => `
-                <div class="bg-slate-800 p-3.5 rounded-xl border border-slate-700 relative pb-11">
+                <div class="bg-custom-card p-3.5 rounded-xl border border-custom-border relative pb-11 shadow-md">
                     <div class="flex justify-between items-center mb-2">
-                        <span class="font-semibold text-sky-400 text-sm">${day.day}</span>
-                        <span class="text-xs text-slate-400">${day.date}</span>
+                        <span class="font-semibold text-zinc-200 text-sm">${day.day}</span>
+                        <span class="text-xs text-zinc-400">${day.date}</span>
                     </div>
-                    <ul class="space-y-1 text-xs text-slate-300 mb-2">
-                        ${day.lessons.length > 0 ? day.lessons.map(l => `<li class="py-0.5">• ${l}</li>`).join('') : '<li class="text-slate-500 italic">Пар нет 🎉</li>'}
+                    <ul class="space-y-1 text-xs text-zinc-300 mb-2">
+                        ${day.lessons.length > 0 ? day.lessons.map(l => `<li class="py-0.5">• ${l}</li>`).join('') : '<li class="text-zinc-500 italic">Пар нет 🎉</li>'}
                     </ul>
-                    <div class="absolute bottom-2.5 left-3 right-3 flex justify-between items-center pt-2 border-t border-slate-700/50">
-                        <button onclick="openDayHwModal('${day.full_date}', '${day.day}', '${day.date}')" class="bg-sky-500/20 hover:bg-sky-500/40 text-sky-300 px-2.5 py-1 rounded-lg text-[11px] font-medium transition flex items-center gap-1">
+                    <div class="absolute bottom-2.5 left-3 right-3 flex justify-between items-center pt-2 border-t border-custom-border/50">
+                        <button onclick="openDayHwModal('${day.full_date}', '${day.day}', '${day.date}')" class="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-2.5 py-1 rounded-lg text-[11px] font-medium transition flex items-center gap-1 border border-custom-border">
                             📖 Просмотреть ДЗ
                         </button>
                         ${appData.is_admin ? `
-                            <button onclick="openEditModal('${day.day}')" class="bg-amber-500/20 hover:bg-amber-500/40 text-amber-400 px-2.5 py-1 rounded-lg text-[11px] font-medium transition flex items-center gap-1">
+                            <button onclick="openEditModal('${day.day}')" class="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-2.5 py-1 rounded-lg text-[11px] font-medium transition flex items-center gap-1 border border-custom-border">
                                 ✏️ Изменить
                             </button>
                         ` : ''}
@@ -190,15 +201,15 @@ HTML_TEMPLATE = """
             const filteredHw = appData.homework.filter(hw => hw.date_key === fullDateStr);
 
             if (filteredHw.length === 0) {
-                container.innerHTML = '<p class="text-xs text-slate-500 italic text-center py-4">На этот день домашних заданий нет ✨</p>';
+                container.innerHTML = '<p class="text-xs text-zinc-500 italic text-center py-4">На этот день домашних заданий нет ✨</p>';
             } else {
                 container.innerHTML = filteredHw.map(hw => `
-                    <div class="bg-slate-900 p-3 rounded-xl border border-slate-700/60 space-y-1">
+                    <div class="bg-custom-dark p-3 rounded-xl border border-custom-border space-y-1">
                         <div class="flex justify-between items-center">
-                            <span class="font-semibold text-amber-400 text-xs">${hw.subject}</span>
-                            <span class="text-[10px] text-slate-500">${hw.author}</span>
+                            <span class="font-semibold text-zinc-200 text-xs">${hw.subject}</span>
+                            <span class="text-[10px] text-zinc-500">${hw.author}</span>
                         </div>
-                        <p class="text-xs text-slate-200 whitespace-pre-wrap">${hw.task}</p>
+                        <p class="text-xs text-zinc-300 whitespace-pre-wrap">${hw.task}</p>
                     </div>
                 `).join('');
             }
@@ -226,37 +237,81 @@ HTML_TEMPLATE = """
             editingDay = null;
         }
 
+        const STANDARD_TIMES = [
+            "08.30-10.10",
+            "10.20-12.00",
+            "12.40-14.20",
+            "14.30-16.10",
+            "15.25-17.05"
+        ];
+
         function renderModalLessons() {
             const container = document.getElementById('modal-lessons-container');
             if (currentEditingLessons.length === 0) {
-                container.innerHTML = '<p class="text-xs text-slate-500 italic text-center py-4">Пар нет</p>';
+                container.innerHTML = '<p class="text-xs text-zinc-500 italic text-center py-4">Пар нет</p>';
                 return;
             }
-            container.innerHTML = currentEditingLessons.map((lesson, index) => `
-                <div class="flex items-center gap-2">
-                    <input type="text" value="${lesson}" onchange="updateLessonText(${index}, this.value)" class="flex-1 bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-slate-200 focus:outline-none focus:border-amber-500">
-                    <button onclick="removeLesson(${index})" class="bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white p-2 rounded-lg text-xs transition" title="Удалить пару">🗑</button>
-                </div>
-            `).join('');
+            container.innerHTML = currentEditingLessons.map((lesson, index) => {
+                let cleanSubj = lesson.replace(/^.*?(?:пара|урок).*?:\s*/i, '');
+                return `
+                    <div class="flex items-center gap-2">
+                        <input type="text" data-index="${index}" value="${cleanSubj}" onchange="updateLessonSubject(${index}, this.value)" class="flex-1 bg-custom-dark border border-custom-border rounded-lg p-2 text-xs text-zinc-200 focus:outline-none focus:border-zinc-500">
+                        <button onclick="removeLesson(${index})" class="bg-red-950/40 hover:bg-red-900/60 text-red-300 border border-red-900/50 p-2 rounded-lg text-xs transition" title="Удалить пару">🗑</button>
+                    </div>
+                `;
+            }).join('');
         }
 
-        function updateLessonText(index, val) {
+        function updateLessonSubject(index, val) {
             currentEditingLessons[index] = val;
         }
 
         function removeLesson(index) {
+            const container = document.getElementById('modal-lessons-container');
+            const inputs = container.querySelectorAll('input');
+            inputs.forEach((inp, idx) => {
+                currentEditingLessons[idx] = inp.value;
+            });
+
             currentEditingLessons.splice(index, 1);
             renderModalLessons();
         }
 
         function addLessonInput() {
-            const num = currentEditingLessons.length + 1;
-            currentEditingLessons.push(`${num} пара: Новый предмет`);
+            const container = document.getElementById('modal-lessons-container');
+            const inputs = container.querySelectorAll('input');
+            inputs.forEach((inp, idx) => {
+                currentEditingLessons[idx] = inp.value;
+            });
+
+            currentEditingLessons.push('Новый предмет');
             renderModalLessons();
         }
 
         function saveDaySchedule() {
             if (!editingDay) return;
+            
+            const container = document.getElementById('modal-lessons-container');
+            const inputs = container.querySelectorAll('input');
+            
+            const formattedLessons = [];
+            inputs.forEach((inp, idx) => {
+                let subjName = inp.value.trim();
+                if (!subjName) return;
+                
+                let positionNum = idx + 1;
+                if (positionNum <= 3) {
+                    let timeStr = STANDARD_TIMES[idx] || "08.30-10.10";
+                    formattedLessons.push(`${positionNum} пара (${timeStr}): ${subjName}`);
+                } else if (positionNum === 7) {
+                    formattedLessons.push(`7 урок (14.30-15.15): ${subjName}`);
+                } else if (positionNum === 8) {
+                    formattedLessons.push(`8 урок (15.25-17.05): ${subjName}`);
+                } else {
+                    formattedLessons.push(`${positionNum} пара: ${subjName}`);
+                }
+            });
+
             const weekTypeNum = activeWeekType === 'current' ? 0 : 1;
 
             fetch('/api/schedule', {
@@ -266,7 +321,7 @@ HTML_TEMPLATE = """
                     user_id: userId, 
                     day: editingDay, 
                     week_type: weekTypeNum, 
-                    lessons: currentEditingLessons.filter(l => l.trim().length > 0) 
+                    lessons: formattedLessons 
                 })
             }).then(res => res.json()).then(data => {
                 if (data.status === 'success') {
@@ -282,17 +337,17 @@ HTML_TEMPLATE = """
             if (!appData) return;
             const container = document.getElementById('homework-container');
             if (appData.homework.length === 0) {
-                container.innerHTML = '<div class="text-center py-6 text-slate-500 text-sm">Домашки пока нет ✨</div>';
+                container.innerHTML = '<div class="text-center py-6 text-zinc-500 text-sm">Домашки пока нет ✨</div>';
                 return;
             }
             container.innerHTML = appData.homework.map(hw => `
-                <div class="bg-slate-800 p-3.5 rounded-xl border border-slate-700 space-y-1">
+                <div class="bg-custom-card p-3.5 rounded-xl border border-custom-border space-y-1 shadow-md">
                     <div class="flex justify-between items-center">
-                        <span class="font-semibold text-amber-400 text-sm">${hw.subject}</span>
-                        <span class="text-[11px] bg-slate-700/50 text-slate-300 px-2 py-0.5 rounded">${hw.date_key}</span>
+                        <span class="font-semibold text-zinc-200 text-sm">${hw.subject}</span>
+                        <span class="text-[11px] bg-zinc-800 text-zinc-300 px-2 py-0.5 rounded border border-custom-border">${hw.date_key}</span>
                     </div>
-                    <p class="text-xs text-slate-200 whitespace-pre-wrap">${hw.task}</p>
-                    <div class="text-[10px] text-slate-500 text-right">Автор: ${hw.author}</div>
+                    <p class="text-xs text-zinc-300 whitespace-pre-wrap">${hw.task}</p>
+                    <div class="text-[10px] text-zinc-500 text-right">Автор: ${hw.author}</div>
                 </div>
             `).join('');
         }
@@ -335,7 +390,7 @@ def webapp_page():
     return render_template_string(HTML_TEMPLATE)
 
 
-# --- ПОЛНОЕ И ПРАВИЛЬНОЕ РАСПИСАНИЕ ЭЗС 12-26 ---
+# --- РАСПИСАНИЕ ЭЗС 12-26 ---
 SCHEDULE = {
     "Понедельник": [
         [
@@ -560,9 +615,8 @@ def get_day_schedule_for_date(target_date):
     return SCHEDULE.get(day_name, [[], []])[target_week_type]
 
 
-# --- КЛАВИАТУРЫ И НАДЕЖНЫЙ REDIRECT В ЛС ---
+# --- КЛАВИАТУРЫ ---
 def get_private_keyboard():
-    """Для ЛС: есть полноценная кнопка WebApp."""
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, is_persistent=True)
     markup.add(
         types.KeyboardButton(
@@ -576,7 +630,6 @@ def get_private_keyboard():
 
 
 def get_group_keyboard():
-    """Для групп: текстовые кнопки без web_app."""
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, is_persistent=True)
     markup.add(types.KeyboardButton("📅 На сегодня"), types.KeyboardButton("📅 На завтра"))
     markup.add(types.KeyboardButton("📋 Расписание на неделю"))
@@ -584,13 +637,12 @@ def get_group_keyboard():
 
 
 def get_group_inline():
-    """Инлайн-кнопка для групп: безошибочно перенаправляет в ЛС с ботом для запуска WebApp."""
-    username = bot.get_me().username
+    """Инлайн-кнопка с НАСТОЯЩИМ WebApp для групп."""
     kb = types.InlineKeyboardMarkup()
     kb.add(
         types.InlineKeyboardButton(
             "🚀 Открыть приложение ЭЗС 12-26",
-            url=f"https://t.me/{username}?start=app",
+            web_app=types.WebAppInfo(url=WEBAPP_URL),
         )
     )
     return kb
@@ -643,7 +695,7 @@ def cmd_start(message):
         send_safe(message.chat.id, "Привет! Кнопки расписания ниже:", get_group_keyboard())
         send_safe(
             message.chat.id,
-            "Мини-приложение открывается в личных сообщениях с ботом:",
+            "Мини-приложение группы:",
             get_group_inline(),
         )
 
