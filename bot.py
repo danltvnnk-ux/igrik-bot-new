@@ -191,6 +191,24 @@ HTML_TEMPLATE = r"""
             border-radius: 0.5rem;
         }
 
+        /* Рамки переключателей */
+        .neon-frame { padding: 2px; border-radius: 0.75rem; }
+        .neon-inner { border-radius: 0.6rem; }
+        .neon-shift {
+            background: linear-gradient(90deg, #a855f7, #ff1744, #a855f7, #ff1744, #a855f7);
+            background-size: 200% 100%;
+            animation: neonShift 4s linear infinite;
+            box-shadow: 0 0 10px rgba(168, 85, 247, 0.6), 0 0 16px rgba(255, 23, 68, 0.35);
+        }
+        @keyframes neonShift {
+            from { background-position: 0% 50%; }
+            to { background-position: 100% 50%; }
+        }
+        .neon-violet {
+            background: #a855f7;
+            box-shadow: 0 0 10px rgba(168, 85, 247, 0.75), 0 0 18px rgba(168, 85, 247, 0.4);
+        }
+
         .subject-btn {
             background: #120c1c;
             border: 1px solid #a855f7;
@@ -202,6 +220,33 @@ HTML_TEMPLATE = r"""
             transition: box-shadow 0.15s;
         }
         .subject-btn:hover { box-shadow: 0 0 14px rgba(168, 85, 247, 0.95); }
+
+        .input-dark {
+            width: 100%;
+            background: #121212;
+            border: 1px solid #333333;
+            border-radius: 0.5rem;
+            padding: 0.5rem 0.6rem;
+            font-size: 0.8rem;
+            color: #e4e4e7;
+        }
+        .input-dark:focus { outline: none; border-color: #71717a; }
+
+        .seg-btn {
+            background: #27272a;
+            color: #d4d4d8;
+            border: 1px solid #333333;
+            border-radius: 0.5rem;
+            padding: 0.45rem 0.4rem;
+            font-size: 0.75rem;
+            line-height: 1.2;
+        }
+        .seg-btn.active {
+            background: #8B5A2B;
+            color: #ffffff;
+            border-color: #8B5A2B;
+            box-shadow: 0 0 8px rgba(139, 90, 43, 0.6);
+        }
 
         .cal-wrap {
             background: linear-gradient(160deg, #211b16, #141210);
@@ -260,17 +305,22 @@ HTML_TEMPLATE = r"""
             <span id="admin-badge" class="hidden btn-chocolate text-white text-xs px-2.5 py-1 rounded-full font-medium shadow">Админ</span>
         </header>
 
-        <!-- Вкладки -->
-        <div class="flex bg-custom-card border border-custom-border p-1 rounded-xl mb-6 shadow-lg">
-            <button onclick="switchTab('schedule')" id="btn-schedule" class="flex-1 py-2 text-sm font-medium rounded-lg btn-chocolate text-white transition">Расписание</button>
-            <button onclick="switchTab('homework')" id="btn-homework" class="flex-1 py-2 text-sm font-medium rounded-lg text-zinc-400 transition">Домашка</button>
+        <!-- Вкладки: переливающаяся фиолетово-красная рамка -->
+        <div class="neon-frame neon-shift mb-6">
+            <div class="flex bg-custom-card p-1 neon-inner">
+                <button onclick="switchTab('schedule')" id="btn-schedule" class="flex-1 py-2 text-sm font-medium rounded-lg btn-chocolate text-white transition">Расписание</button>
+                <button onclick="switchTab('homework')" id="btn-homework" class="flex-1 py-2 text-sm font-medium rounded-lg text-zinc-400 transition">Домашка</button>
+            </div>
         </div>
 
         <!-- РАСПИСАНИЕ -->
         <div id="tab-schedule" class="space-y-4">
-            <div class="flex bg-custom-card border border-custom-border p-1 rounded-lg">
-                <button onclick="setWeek('current')" id="week-btn-current" class="flex-1 py-1.5 text-xs font-medium rounded btn-chocolate text-white shadow">Эту неделю</button>
-                <button onclick="setWeek('next')" id="week-btn-next" class="flex-1 py-1.5 text-xs font-medium rounded text-zinc-400">Следующую</button>
+            <!-- Переключатель недель: неоново-фиолетовая рамка -->
+            <div class="neon-frame neon-violet">
+                <div class="flex bg-custom-card p-1 neon-inner">
+                    <button onclick="setWeek('current')" id="week-btn-current" class="flex-1 py-1.5 text-xs font-medium rounded btn-chocolate text-white shadow">Эту неделю</button>
+                    <button onclick="setWeek('next')" id="week-btn-next" class="flex-1 py-1.5 text-xs font-medium rounded text-zinc-400">Следующую</button>
+                </div>
             </div>
 
             <div id="schedule-container" class="space-y-3"></div>
@@ -328,13 +378,31 @@ HTML_TEMPLATE = r"""
 
     <!-- МОДАЛЬНОЕ ОКНО РЕДАКТИРОВАНИЯ ДНЯ -->
     <div id="edit-modal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-        <div class="bg-custom-card border border-custom-border w-full max-w-sm rounded-2xl p-4 space-y-4 shadow-2xl">
+        <div class="bg-custom-card border border-custom-border w-full max-w-sm rounded-2xl p-4 space-y-3 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div class="flex justify-between items-center">
                 <h3 id="modal-title" class="text-sm font-semibold text-zinc-200">Редактирование дня</h3>
                 <button onclick="closeEditModal()" class="text-zinc-400 hover:text-white text-sm font-bold">✕</button>
             </div>
-            <div id="modal-lessons-container" class="space-y-2 max-h-60 overflow-y-auto pr-1"></div>
-            <button onclick="addLessonInput()" class="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs py-2 rounded-lg font-medium transition border border-custom-border">➕ Добавить пару / урок</button>
+
+            <div id="modal-lessons-container" class="space-y-2"></div>
+
+            <button type="button" id="add-toggle" onclick="toggleAddPanel()" class="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs py-2 rounded-lg font-medium transition border border-custom-border">➕ Добавить пару / урок</button>
+
+            <div id="add-panel" class="hidden space-y-2 border border-custom-border rounded-xl p-3">
+                <div class="grid grid-cols-2 gap-2">
+                    <button type="button" id="kind-pair" onclick="setLessonKind('pair')" class="seg-btn">Пара</button>
+                    <button type="button" id="kind-lesson" onclick="setLessonKind('lesson')" class="seg-btn">Урок</button>
+                </div>
+                <div id="slot-list" class="grid grid-cols-2 gap-2"></div>
+                <div id="custom-lesson" class="hidden space-y-2">
+                    <input id="custom-label" type="text" placeholder="Название, например: 8 урок" class="input-dark">
+                    <input id="custom-time" type="text" placeholder="Время, например: 15.25-16.10" class="input-dark">
+                </div>
+                <input id="new-subject" list="subject-options" type="text" placeholder="Предмет" class="input-dark">
+                <datalist id="subject-options"></datalist>
+                <button type="button" onclick="confirmAddLesson()" class="w-full btn-chocolate text-white text-xs py-2 rounded-lg font-medium transition shadow">Добавить в расписание</button>
+            </div>
+
             <div class="flex gap-2 pt-2">
                 <button onclick="closeEditModal()" class="flex-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs py-2.5 rounded-xl font-medium transition">Отмена</button>
                 <button onclick="saveDaySchedule()" class="flex-1 btn-chocolate text-white text-xs py-2.5 rounded-xl font-medium transition shadow">Сохранить</button>
@@ -352,7 +420,20 @@ HTML_TEMPLATE = r"""
         let activeWeekType = 'current';
         let editingDay = null;
         let currentEditingLessons = [];
+        let addState = { kind: 'pair', slot: 0 };
         let hw = { subject: null, date: null, view: null };
+
+        const PAIR_SLOTS = [
+            { label: '1 пара', time: '08.30-10.10' },
+            { label: '2 пара', time: '10.20-12.00' },
+            { label: '3 пара', time: '12.40-14.20' },
+            { label: '4 пара', time: '14.30-16.10' }
+        ];
+        const LESSON_SLOTS = [
+            { label: '7 урок', time: '14.30-15.15' },
+            { label: '8,9 урок', time: '15.25-17.05' },
+            { label: 'Другой урок', time: '', custom: true }
+        ];
 
         const MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
         const MONTHS_GEN = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
@@ -381,6 +462,23 @@ HTML_TEMPLATE = r"""
             return (appData && appData.subject_dates && appData.subject_dates[subject]) || [];
         }
 
+        // Разбор строки расписания: "1 пара (08.30-10.10): Химия"
+        function parseLesson(s) {
+            const m = s.match(/^(.*?)\s*\(([^)]*)\)\s*:\s*(.*)$/);
+            if (m) return { label: m[1].trim(), time: m[2].trim(), subject: m[3].trim() };
+            const m2 = s.match(/^(.*?):\s*(.*)$/);
+            if (m2) return { label: m2[1].trim(), time: '', subject: m2[2].trim() };
+            return { label: '', time: '', subject: s.trim() };
+        }
+        function formatLesson(l) {
+            const label = l.label || 'Урок';
+            return l.time ? `${label} (${l.time}): ${l.subject}` : `${label}: ${l.subject}`;
+        }
+        function startMin(time) {
+            const m = (time || '').match(/(\d{1,2})\.(\d{2})/);
+            return m ? Number(m[1]) * 60 + Number(m[2]) : 9999;
+        }
+
         function authHeaders(withJson) {
             const h = {};
             if (withJson) h['Content-Type'] = 'application/json';
@@ -393,6 +491,13 @@ HTML_TEMPLATE = r"""
             document.getElementById('subject-list').addEventListener('click', e => {
                 const btn = e.target.closest('button[data-subject]');
                 if (btn) chooseSubject(btn.dataset.subject);
+            });
+            document.getElementById('slot-list').addEventListener('click', e => {
+                const btn = e.target.closest('button[data-slot]');
+                if (btn) {
+                    addState.slot = Number(btn.dataset.slot);
+                    renderAddPanel();
+                }
             });
             document.getElementById('hw-calendar').addEventListener('click', e => {
                 const nav = e.target.closest('[data-nav]');
@@ -507,13 +612,18 @@ HTML_TEMPLATE = r"""
             document.getElementById('day-hw-modal').classList.add('hidden');
         }
 
+        // --- РЕДАКТОР РАСПИСАНИЯ ---
         function openEditModal(dayName) {
             editingDay = dayName;
             const schedule = activeWeekType === 'current' ? appData.current_week : appData.next_week;
             const dayObj = schedule.find(d => d.day === dayName);
-            currentEditingLessons = dayObj ? [...dayObj.lessons] : [];
+            currentEditingLessons = dayObj ? dayObj.lessons.map(parseLesson) : [];
 
             document.getElementById('modal-title').innerText = `${dayName} (${activeWeekType === 'current' ? 'Текущая' : 'Следующая'})`;
+            document.getElementById('subject-options').innerHTML =
+                (appData.subjects || []).map(s => `<option value="${esc(s)}"></option>`).join('');
+
+            closeAddPanel();
             renderModalLessons();
             document.getElementById('edit-modal').classList.remove('hidden');
         }
@@ -523,11 +633,13 @@ HTML_TEMPLATE = r"""
             editingDay = null;
         }
 
-        const PAIR_TIMES = [
-            "08.30-10.10",
-            "10.20-12.00",
-            "12.40-14.20"
-        ];
+        // Переносит текст из полей в массив (чтобы не потерять правки)
+        function syncFromInputs() {
+            document.querySelectorAll('#modal-lessons-container input[data-index]').forEach(inp => {
+                const i = Number(inp.dataset.index);
+                if (currentEditingLessons[i]) currentEditingLessons[i].subject = inp.value;
+            });
+        }
 
         function renderModalLessons() {
             const container = document.getElementById('modal-lessons-container');
@@ -535,66 +647,97 @@ HTML_TEMPLATE = r"""
                 container.innerHTML = '<p class="text-xs text-zinc-500 italic text-center py-4">Пар нет</p>';
                 return;
             }
-            container.innerHTML = currentEditingLessons.map((lesson, index) => {
-                let cleanSubj = lesson.replace(/^.*?(?:пара|урок).*?:\s*/i, '');
-                return `
-                    <div class="flex items-center gap-2">
-                        <input type="text" data-index="${index}" value="${esc(cleanSubj)}" onchange="updateLessonSubject(${index}, this.value)" class="flex-1 bg-custom-dark border border-custom-border rounded-lg p-2 text-xs text-zinc-200 focus:outline-none focus:border-zinc-500">
-                        <button onclick="removeLesson(${index})" class="bg-red-950/40 hover:bg-red-900/60 text-red-300 border border-red-900/50 p-2 rounded-lg text-xs transition" title="Удалить пару">🗑</button>
+            container.innerHTML = currentEditingLessons.map((l, i) => `
+                <div class="flex items-center gap-2">
+                    <div class="flex-1">
+                        <div class="text-[10px] text-zinc-500">${esc(l.label)}${l.time ? ' (' + esc(l.time) + ')' : ''}</div>
+                        <input type="text" data-index="${i}" value="${esc(l.subject)}" class="input-dark">
                     </div>
-                `;
-            }).join('');
-        }
-
-        function updateLessonSubject(index, val) {
-            currentEditingLessons[index] = val;
+                    <button type="button" onclick="removeLesson(${i})" class="bg-red-950/40 hover:bg-red-900/60 text-red-300 border border-red-900/50 p-2 rounded-lg text-xs transition" title="Удалить">🗑</button>
+                </div>
+            `).join('');
         }
 
         function removeLesson(index) {
-            const container = document.getElementById('modal-lessons-container');
-            const inputs = container.querySelectorAll('input');
-            inputs.forEach((inp, idx) => {
-                currentEditingLessons[idx] = inp.value;
-            });
-
+            syncFromInputs();
             currentEditingLessons.splice(index, 1);
             renderModalLessons();
         }
 
-        function addLessonInput() {
-            const container = document.getElementById('modal-lessons-container');
-            const inputs = container.querySelectorAll('input');
-            inputs.forEach((inp, idx) => {
-                currentEditingLessons[idx] = inp.value;
-            });
+        function toggleAddPanel() {
+            const panel = document.getElementById('add-panel');
+            if (panel.classList.contains('hidden')) {
+                addState = { kind: 'pair', slot: 0 };
+                panel.classList.remove('hidden');
+                renderAddPanel();
+            } else {
+                closeAddPanel();
+            }
+        }
 
-            currentEditingLessons.push('Новый предмет');
+        function closeAddPanel() {
+            document.getElementById('add-panel').classList.add('hidden');
+        }
+
+        function setLessonKind(kind) {
+            addState = { kind, slot: 0 };
+            renderAddPanel();
+        }
+
+        function renderAddPanel() {
+            document.getElementById('kind-pair').classList.toggle('active', addState.kind === 'pair');
+            document.getElementById('kind-lesson').classList.toggle('active', addState.kind === 'lesson');
+
+            const slots = addState.kind === 'pair' ? PAIR_SLOTS : LESSON_SLOTS;
+            document.getElementById('slot-list').innerHTML = slots.map((s, i) => `
+                <button type="button" data-slot="${i}" class="seg-btn ${i === addState.slot ? 'active' : ''}">
+                    ${esc(s.label)}${s.time ? '<br><span class="text-[10px] opacity-80">' + esc(s.time) + '</span>' : ''}
+                </button>
+            `).join('');
+
+            const current = slots[addState.slot];
+            document.getElementById('custom-lesson').classList.toggle('hidden', !(current && current.custom));
+        }
+
+        function confirmAddLesson() {
+            syncFromInputs();
+            const slots = addState.kind === 'pair' ? PAIR_SLOTS : LESSON_SLOTS;
+            const slot = slots[addState.slot];
+
+            let label = slot.label;
+            let time = slot.time || '';
+            if (slot.custom) {
+                label = document.getElementById('custom-label').value.trim();
+                time = document.getElementById('custom-time').value.trim();
+                if (!label) {
+                    alert('Введите название урока, например: 8 урок');
+                    return;
+                }
+            }
+
+            const subject = document.getElementById('new-subject').value.trim();
+            if (!subject) {
+                alert('Введите название предмета');
+                return;
+            }
+
+            currentEditingLessons.push({ label, time, subject });
+            document.getElementById('new-subject').value = '';
+            document.getElementById('custom-label').value = '';
+            document.getElementById('custom-time').value = '';
+            closeAddPanel();
             renderModalLessons();
         }
 
         function saveDaySchedule() {
             if (!editingDay) return;
+            syncFromInputs();
 
-            const container = document.getElementById('modal-lessons-container');
-            const inputs = container.querySelectorAll('input');
-
-            const formattedLessons = [];
-            inputs.forEach((inp, idx) => {
-                let subjName = inp.value.trim();
-                if (!subjName) return;
-
-                let positionNum = idx + 1;
-                if (positionNum <= 3) {
-                    let timeStr = PAIR_TIMES[idx];
-                    formattedLessons.push(`${positionNum} пара (${timeStr}): ${subjName}`);
-                } else if (positionNum === 4) {
-                    formattedLessons.push(`7 урок (14.30-15.15): ${subjName}`);
-                } else if (positionNum === 5) {
-                    formattedLessons.push(`8,9 урок (15.25-17.05): ${subjName}`);
-                } else {
-                    formattedLessons.push(`${positionNum} урок: ${subjName}`);
-                }
-            });
+            const items = currentEditingLessons
+                .filter(l => l.subject && l.subject.trim())
+                .map(l => ({ ...l, subject: l.subject.trim() }));
+            items.sort((a, b) => startMin(a.time) - startMin(b.time));
+            const formattedLessons = items.map(formatLesson);
 
             const schedule = activeWeekType === 'current' ? appData.current_week : appData.next_week;
             const weekTypeNum = schedule[0].week_type;
