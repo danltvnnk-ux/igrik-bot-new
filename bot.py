@@ -184,6 +184,12 @@ HTML_TEMPLATE = r"""
         .card-violet { border: 1px solid #a855f7; box-shadow: 0 0 8px rgba(168, 85, 247, 0.5); }
         .card-red-neon { border: 1px solid #ff1744; box-shadow: 0 0 12px rgba(255, 23, 68, 0.65); }
 
+        /* Неоново-фиолетовая рамка модальных окон */
+        .modal-neon {
+            border: 1px solid #a855f7;
+            box-shadow: 0 0 14px rgba(168, 85, 247, 0.65), 0 0 26px rgba(168, 85, 247, 0.25);
+        }
+
         .tag-outline {
             background: rgba(139, 90, 43, 0.25);
             border: 1px solid #8B5A2B;
@@ -364,9 +370,9 @@ HTML_TEMPLATE = r"""
         </div>
     </div>
 
-    <!-- МОДАЛЬНОЕ ОКНО ПРОСМОТРА ДЗ ДНЯ -->
+    <!-- МОДАЛЬНОЕ ОКНО ПРОСМОТРА ДЗ ДНЯ (неоново-фиолетовая рамка) -->
     <div id="day-hw-modal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-        <div class="bg-custom-card border border-custom-border w-full max-w-sm rounded-2xl p-4 space-y-4 shadow-2xl">
+        <div class="bg-custom-card modal-neon w-full max-w-sm rounded-2xl p-4 space-y-4">
             <div class="flex justify-between items-center">
                 <h3 id="day-hw-modal-title" class="text-sm font-semibold text-zinc-200">Домашнее задание</h3>
                 <button onclick="closeDayHwModal()" class="text-zinc-400 hover:text-white text-sm font-bold">✕</button>
@@ -376,9 +382,9 @@ HTML_TEMPLATE = r"""
         </div>
     </div>
 
-    <!-- МОДАЛЬНОЕ ОКНО РЕДАКТИРОВАНИЯ ДНЯ -->
+    <!-- МОДАЛЬНОЕ ОКНО РЕДАКТИРОВАНИЯ ДНЯ (неоново-фиолетовая рамка) -->
     <div id="edit-modal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-        <div class="bg-custom-card border border-custom-border w-full max-w-sm rounded-2xl p-4 space-y-3 shadow-2xl max-h-[90vh] overflow-y-auto">
+        <div class="bg-custom-card modal-neon w-full max-w-sm rounded-2xl p-4 space-y-3 max-h-[90vh] overflow-y-auto">
             <div class="flex justify-between items-center">
                 <h3 id="modal-title" class="text-sm font-semibold text-zinc-200">Редактирование дня</h3>
                 <button onclick="closeEditModal()" class="text-zinc-400 hover:text-white text-sm font-bold">✕</button>
