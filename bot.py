@@ -184,10 +184,24 @@ HTML_TEMPLATE = r"""
         .card-violet { border: 1px solid #a855f7; box-shadow: 0 0 8px rgba(168, 85, 247, 0.5); }
         .card-red-neon { border: 1px solid #ff1744; box-shadow: 0 0 12px rgba(255, 23, 68, 0.65); }
 
-        /* Неоново-фиолетовая рамка модальных окон */
+        /* Неоново-фиолетовая рамка большого окна редактирования дня */
         .modal-neon {
             border: 1px solid #a855f7;
             box-shadow: 0 0 14px rgba(168, 85, 247, 0.65), 0 0 26px rgba(168, 85, 247, 0.25);
+        }
+
+        /* Неоново-красная рамка большого окна выбора предмета */
+        .hw-neon-red {
+            border: 1px solid #ff1744;
+            box-shadow: 0 0 14px rgba(255, 23, 68, 0.65), 0 0 26px rgba(255, 23, 68, 0.25);
+        }
+
+        /* Фиолетовая рамка маленькой карточки строки предмета в редакторе дня */
+        .lesson-card {
+            border: 1px solid #a855f7;
+            border-radius: 0.75rem;
+            padding: 0.5rem;
+            box-shadow: 0 0 8px rgba(168, 85, 247, 0.55), inset 0 0 6px rgba(168, 85, 247, 0.12);
         }
 
         .tag-outline {
@@ -215,18 +229,18 @@ HTML_TEMPLATE = r"""
             box-shadow: 0 0 10px rgba(168, 85, 247, 0.75), 0 0 18px rgba(168, 85, 247, 0.4);
         }
 
-        /* Кнопки выбора предмета: неоново-красная обводка */
+        /* Маленькие кнопки предметов: неоново-фиолетовая обводка */
         .subject-btn {
-            background: #14080a;
-            border: 1px solid #ff1744;
-            color: #ffe4e8;
+            background: #120c1c;
+            border: 1px solid #a855f7;
+            color: #f3e8ff;
             border-radius: 0.75rem;
             padding: 0.625rem 0.5rem;
             font-size: 0.8rem;
-            box-shadow: 0 0 8px rgba(255, 23, 68, 0.6), inset 0 0 6px rgba(255, 23, 68, 0.15);
+            box-shadow: 0 0 8px rgba(168, 85, 247, 0.6), inset 0 0 6px rgba(168, 85, 247, 0.15);
             transition: box-shadow 0.15s;
         }
-        .subject-btn:hover { box-shadow: 0 0 14px rgba(255, 23, 68, 0.95); }
+        .subject-btn:hover { box-shadow: 0 0 14px rgba(168, 85, 247, 0.95); }
 
         .input-dark {
             width: 100%;
@@ -343,9 +357,9 @@ HTML_TEMPLATE = r"""
         </div>
     </div>
 
-    <!-- ПОШАГОВОЕ ОКНО ЗАПИСИ ДЗ -->
+    <!-- ПОШАГОВОЕ ОКНО ЗАПИСИ ДЗ (большая карточка: неоново-красная рамка) -->
     <div id="hw-modal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-        <div class="bg-custom-card border border-custom-border w-full max-w-sm rounded-2xl p-4 space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto">
+        <div class="bg-custom-card hw-neon-red w-full max-w-sm rounded-2xl p-4 space-y-4 max-h-[90vh] overflow-y-auto">
             <div class="flex justify-between items-center">
                 <div class="flex items-center gap-2">
                     <button type="button" id="hw-back" onclick="showHwStage1()" class="hidden text-zinc-400 hover:text-white text-sm px-1">←</button>
@@ -383,7 +397,7 @@ HTML_TEMPLATE = r"""
         </div>
     </div>
 
-    <!-- МОДАЛЬНОЕ ОКНО РЕДАКТИРОВАНИЯ ДНЯ (неоново-фиолетовая рамка) -->
+    <!-- МОДАЛЬНОЕ ОКНО РЕДАКТИРОВАНИЯ ДНЯ (большая карточка: неоново-фиолетовая рамка) -->
     <div id="edit-modal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
         <div class="bg-custom-card modal-neon w-full max-w-sm rounded-2xl p-4 space-y-3 max-h-[90vh] overflow-y-auto">
             <div class="flex justify-between items-center">
@@ -655,7 +669,7 @@ HTML_TEMPLATE = r"""
                 return;
             }
             container.innerHTML = currentEditingLessons.map((l, i) => `
-                <div class="flex items-center gap-2">
+                <div class="lesson-card flex items-center gap-2">
                     <div class="flex-1">
                         <div class="text-[10px] text-zinc-500">${esc(l.label)}${l.time ? ' (' + esc(l.time) + ')' : ''}</div>
                         <input type="text" data-index="${i}" value="${esc(l.subject)}" class="input-dark">
