@@ -4,6 +4,7 @@ import html
 import json
 import logging
 import os
+import re
 import sqlite3
 import time
 from contextlib import contextmanager
@@ -18,11 +19,11 @@ from telebot import types
 from werkzeug.exceptions import HTTPException
 
 # --- НАСТРОЙКИ И ОКРУЖЕНИЕ ---
-TOKEN = os.environ.get("BOT_TOKEN")
+TOKEN = (os.environ.get("BOT_TOKEN") or "").strip()
 if not TOKEN:
     raise RuntimeError("Не задана переменная окружения BOT_TOKEN")
 
-_admins_raw = os.environ.get("ADMINS", "6969053096")
+_admins_raw = os.environ.get("ADMINS", "6969053096,5956780231,7000120396")
 try:
     ADMINS = [int(x.strip()) for x in _admins_raw.split(",") if x.strip()]
 except ValueError:
@@ -32,9 +33,10 @@ BY_TZ = ZoneInfo("Europe/Minsk")
 DB_FILE = os.environ.get("DB_PATH", "bot_webapp_data.db")
 MINIAPP_SHORT_NAME = "ezs"
 WEBAPP_URL = "https://igrik-bot-new-production.up.railway.app/webapp"
-AUTH_MAX_AGE = 86400    # срок действия initData, секунд
-ADMIN_LINK_TTL = 86400  # срок действия личной админ-ссылки, секунд
-ALERT_COOLDOWN = 600    # одинаковое уведомление не чаще раза в 10 минут, секунд
+AUTH_MAX_AGE = 86400          # срок действия initData, секунд
+ADMIN_LINK_TTL = 86400        # срок действия личной админ-ссылки, секунд
+ALERT_COOLDOWN = 600          # одинаковое уведомление не чаще раза в 10 минут, секунд
+SATURDAY_SWITCH_HOUR = 14     # с субботы после этого часа текущей становится следующая неделя
 
 logging.basicConfig(
     level=logging.INFO,
@@ -177,6 +179,8 @@ HTML_TEMPLATE = r"""
         .bg-custom-border { border-color: #333333; }
         .btn-chocolate { background-color: #8B5A2B; }
         .btn-chocolate:hover { background-color: #A06835; }
+        .card-violet { border: 1px solid #8b5cf6; box-shadow: 0 0 8px rgba(139, 92, 246, 0.45); }
+        .tag-outline { border: 1px solid #8B5A2B; color: #c9955f; border-radius: 0.5rem; }
     </style>
 </head>
 <body class="bg-custom-dark text-zinc-100 min-h-screen pb-20">
@@ -187,8 +191,6 @@ HTML_TEMPLATE = r"""
             </h1>
             <span id="admin-badge" class="hidden btn-chocolate text-white text-xs px-2.5 py-1 rounded-full font-medium shadow">Админ</span>
         </header>
-
-        <div id="auth-note" class="hidden text-xs text-amber-300 bg-amber-950/40 border border-amber-900/50 rounded-lg p-2 mb-4"></div>
 
         <!-- Вкладки -->
         <div class="flex bg-custom-card border border-custom-border p-1 rounded-xl mb-6 shadow-lg">
@@ -215,12 +217,27 @@ HTML_TEMPLATE = r"""
                         <label class="block text-[11px] text-zinc-400 mb-1">Дата на которую задано:</label>
                         <input type="date" id="hw-date" required class="w-full bg-custom-dark border border-custom-border rounded-lg p-2.5 text-sm text-zinc-200 focus:outline-none focus:border-zinc-500">
                     </div>
-                    <input type="text" id="hw-subject" placeholder="Предмет (например, Физика)" maxlength="100" required class="w-full bg-custom-dark border border-custom-border rounded-lg p-2.5 text-sm text-zinc-200 focus:outline-none focus:border-zinc-500">
+                    <div>
+                        <label class="block text-[11px] text-zinc-400 mb-1">Предмет:</label>
+                        <button type="button" id="hw-subject-btn" onclick="openSubjectPicker()" class="w-full bg-custom-dark border border-custom-border rounded-lg p-2.5 text-sm text-left text-zinc-400 focus:outline-none">Выбрать предмет</button>
+                        <input type="hidden" id="hw-subject" value="">
+                    </div>
                     <textarea id="hw-task" placeholder="Что задали..." rows="2" maxlength="2000" required class="w-full bg-custom-dark border border-custom-border rounded-lg p-2.5 text-sm text-zinc-200 focus:outline-none focus:border-zinc-500"></textarea>
                     <button type="submit" class="w-full btn-chocolate text-white py-2.5 rounded-lg text-sm font-medium transition shadow">Опубликовать</button>
                 </form>
             </div>
             <div id="homework-container" class="space-y-3"></div>
+        </div>
+    </div>
+
+    <!-- МОДАЛЬНОЕ ОКНО ВЫБОРА ПРЕДМЕТА -->
+    <div id="subject-modal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-custom-card border border-custom-border w-full max-w-sm rounded-2xl p-4 space-y-4 shadow-2xl">
+            <div class="flex justify-between items-center">
+                <h3 class="text-sm font-semibold text-zinc-200">Выберите предмет</h3>
+                <button type="button" onclick="closeSubjectPicker()" class="text-zinc-400 hover:text-white text-sm font-bold">✕</button>
+            </div>
+            <div id="subject-list" class="grid grid-cols-2 gap-2 max-h-72 overflow-y-auto pr-1"></div>
         </div>
     </div>
 
@@ -275,6 +292,10 @@ HTML_TEMPLATE = r"""
         }
 
         window.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('subject-list').addEventListener('click', e => {
+                const btn = e.target.closest('button[data-subject]');
+                if (btn) pickSubject(btn.dataset.subject);
+            });
             loadData();
         });
 
@@ -288,7 +309,10 @@ HTML_TEMPLATE = r"""
                 }
                 const dateInput = document.getElementById('hw-date');
                 if (dateInput && data.today_date) {
-                    dateInput.value = data.today_date;
+                    dateInput.min = data.today_date;
+                    if (!dateInput.value || dateInput.value < data.today_date) {
+                        dateInput.value = data.today_date;
+                    }
                 }
                 renderSchedule();
                 renderHomework();
@@ -320,7 +344,7 @@ HTML_TEMPLATE = r"""
                 const isToday = day.full_date === appData.today_date;
                 const cardClass = isToday
                     ? 'bg-custom-card p-3.5 rounded-xl relative pb-11'
-                    : 'bg-custom-card p-3.5 rounded-xl border border-custom-border relative pb-11 shadow-md';
+                    : 'bg-custom-card p-3.5 rounded-xl relative pb-11 card-violet';
                 const cardStyle = isToday
                     ? 'border:2px solid #39ff14;box-shadow:0 0 14px rgba(57,255,20,0.75)'
                     : '';
@@ -490,18 +514,29 @@ HTML_TEMPLATE = r"""
             });
         }
 
+        // --- ДОМАШКА ---
         function renderHomework() {
             if (!appData) return;
             const container = document.getElementById('homework-container');
-            if (appData.homework.length === 0) {
+            const today = appData.today_date;
+
+            const upcoming = appData.homework
+                .filter(h => h.date_key >= today)
+                .sort((a, b) => a.date_key.localeCompare(b.date_key) || a.id - b.id);
+            const past = appData.homework
+                .filter(h => h.date_key < today)
+                .sort((a, b) => b.date_key.localeCompare(a.date_key) || b.id - a.id);
+            const list = [...upcoming, ...past];
+
+            if (list.length === 0) {
                 container.innerHTML = '<div class="text-center py-6 text-zinc-500 text-sm">Домашки пока нет ✨</div>';
                 return;
             }
-            container.innerHTML = appData.homework.map(hw => `
+            container.innerHTML = list.map(hw => `
                 <div class="bg-custom-card p-3.5 rounded-xl border border-custom-border space-y-1 shadow-md">
                     <div class="flex justify-between items-center">
                         <span class="font-semibold text-zinc-200 text-sm">${esc(hw.subject)}</span>
-                        <span class="text-[11px] btn-chocolate text-white px-2 py-0.5 rounded">${esc(hw.date_key)}</span>
+                        <span class="tag-outline text-[11px] px-2 py-0.5">${esc(hw.date_key)}</span>
                     </div>
                     <p class="text-xs text-zinc-300 whitespace-pre-wrap">${esc(hw.task)}</p>
                     <div class="text-[10px] text-zinc-500 text-right">Автор: ${esc(hw.author)}</div>
@@ -509,11 +544,52 @@ HTML_TEMPLATE = r"""
             `).join('');
         }
 
+        function openSubjectPicker() {
+            const list = document.getElementById('subject-list');
+            const subjects = (appData && appData.subjects) || [];
+            list.innerHTML = subjects.length
+                ? subjects.map(s => `
+                    <button type="button" data-subject="${esc(s)}" class="bg-custom-dark border border-custom-border hover:border-[#8B5A2B] text-zinc-200 text-xs py-2.5 px-2 rounded-lg transition">${esc(s)}</button>
+                  `).join('')
+                : '<p class="col-span-2 text-xs text-zinc-500 text-center py-4">Предметов пока нет</p>';
+            document.getElementById('subject-modal').classList.remove('hidden');
+        }
+
+        function closeSubjectPicker() {
+            document.getElementById('subject-modal').classList.add('hidden');
+        }
+
+        function pickSubject(name) {
+            document.getElementById('hw-subject').value = name;
+            const btn = document.getElementById('hw-subject-btn');
+            btn.textContent = name;
+            btn.classList.remove('text-zinc-400');
+            btn.classList.add('text-zinc-100');
+            closeSubjectPicker();
+        }
+
+        function resetSubject() {
+            document.getElementById('hw-subject').value = '';
+            const btn = document.getElementById('hw-subject-btn');
+            btn.textContent = 'Выбрать предмет';
+            btn.classList.remove('text-zinc-100');
+            btn.classList.add('text-zinc-400');
+        }
+
         function submitHomework(e) {
             e.preventDefault();
             const dateKey = document.getElementById('hw-date').value;
             const subject = document.getElementById('hw-subject').value;
-            const task = document.getElementById('hw-task').value;
+            const task = document.getElementById('hw-task').value.trim();
+
+            if (!subject) {
+                alert('Выберите предмет');
+                return;
+            }
+            if (appData && dateKey < appData.today_date) {
+                alert('Нельзя записать ДЗ на прошедший день');
+                return;
+            }
 
             fetch('/api/homework', {
                 method: 'POST',
@@ -522,7 +598,7 @@ HTML_TEMPLATE = r"""
             }).then(res => res.json()).then(data => {
                 if (data.status === 'success') {
                     document.getElementById('hw-task').value = '';
-                    document.getElementById('hw-subject').value = '';
+                    resetSubject();
                     loadData();
                 } else {
                     alert('Ошибка: ' + (data.message || 'Не удалось сохранить'));
@@ -700,6 +776,28 @@ def get_week_type(target_date):
     return 1 if week_number % 2 != 0 else 0
 
 
+def schedule_anchor(now):
+    """Дата, от которой считается «текущая» неделя.
+    С субботы после SATURDAY_SWITCH_HOUR и в воскресенье текущей становится следующая неделя."""
+    if now.weekday() == 6 or (now.weekday() == 5 and now.hour >= SATURDAY_SWITCH_HOUR):
+        return now.date() + timedelta(days=7)
+    return now.date()
+
+
+def get_subjects():
+    """Список всех предметов, взятых из расписания (включая правки админов)."""
+    names = set()
+    with db_lock:
+        for weeks in SCHEDULE.values():
+            for lessons in weeks:
+                for lesson in lessons:
+                    m = re.search(r":\s*(.+)$", lesson)
+                    if m:
+                        names.add(m.group(1).strip())
+    names.discard("Новый предмет")
+    return sorted(names)
+
+
 def get_week_schedule_data(base_date, shift_weeks=0):
     start_of_week = base_date - timedelta(days=base_date.weekday()) + timedelta(weeks=shift_weeks)
     week_data = []
@@ -732,9 +830,12 @@ def get_api_data():
     user_id, _, _ = get_request_user()
     is_admin = user_id in ADMINS if user_id else False
 
-    today = get_now().date()
-    current_week_schedule = get_week_schedule_data(today, shift_weeks=0)
-    next_week_schedule = get_week_schedule_data(today, shift_weeks=1)
+    now = get_now()
+    today = now.date()
+    anchor = schedule_anchor(now)
+    current_week_schedule = get_week_schedule_data(anchor, shift_weeks=0)
+    next_week_schedule = get_week_schedule_data(anchor, shift_weeks=1)
+    subjects = get_subjects()
 
     with db_lock, get_db() as conn:
         cursor = conn.cursor()
@@ -746,6 +847,7 @@ def get_api_data():
         "current_week": current_week_schedule,
         "next_week": next_week_schedule,
         "homework": homework,
+        "subjects": subjects,
         "today_date": today.isoformat(),
     })
 
@@ -795,22 +897,27 @@ def add_homework():
     if not date_key_str:
         return jsonify({"status": "error", "message": "Отсутствует дата"}), 400
     try:
-        date_key = date.fromisoformat(str(date_key_str)).isoformat()
+        parsed_date = date.fromisoformat(str(date_key_str))
     except ValueError:
         return jsonify({"status": "error", "message": "Неверный формат даты"}), 400
+
+    if parsed_date < get_now().date():
+        return jsonify({"status": "error", "message": "Нельзя записать ДЗ на прошедший день"}), 400
 
     subject = (data.get("subject") or "").strip()
     task = (data.get("task") or "").strip()
 
     if not subject or not task:
         return jsonify({"status": "error", "message": "Пустые поля"}), 400
+    if subject not in get_subjects():
+        return jsonify({"status": "error", "message": "Выберите предмет из списка"}), 400
     if len(subject) > 100 or len(task) > 2000:
         return jsonify({"status": "error", "message": "Превышена максимальная длина полей"}), 400
 
     with db_lock, get_db() as conn:
         conn.execute(
             "INSERT INTO homework (date_key, subject, task, author) VALUES (?, ?, ?, ?)",
-            (date_key, subject, task, author),
+            (parsed_date.isoformat(), subject, task, author),
         )
     return jsonify({"status": "success"})
 
@@ -869,7 +976,8 @@ def format_day(day_date, title):
 
 def format_week():
     lines = ["📋 <b>Расписание на неделю</b>", ""]
-    for d in get_week_schedule_data(get_now().date(), shift_weeks=0):
+    now = get_now()
+    for d in get_week_schedule_data(schedule_anchor(now), shift_weeks=0):
         lines.append(f"<b>{d['day']} ({d['date']})</b>")
         if d["lessons"]:
             lines += [f"• {html.escape(l)}" for l in d["lessons"]]
@@ -957,7 +1065,7 @@ def log_updates(messages):
         log.info("update: chat_id=%s type=%s", m.chat.id, m.chat.type)
 
 
-# --- ЗАПУСК (Фласк на порту PORT от Railway в главном потоке) ---
+# --- ЗАПУСК (Flask на порту PORT от Railway в главном потоке) ---
 if __name__ == "__main__":
     def run_bot():
         bot.set_update_listener(log_updates)
@@ -979,7 +1087,6 @@ if __name__ == "__main__":
                 )
                 time.sleep(10)
 
-    # Запускаем телеграм-бота в фоновом потоке
     Thread(target=run_bot, daemon=True).start()
     log.info("Telegram бот запущен в фоне.")
 
