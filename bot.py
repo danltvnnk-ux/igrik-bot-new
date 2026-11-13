@@ -215,17 +215,18 @@ HTML_TEMPLATE = r"""
             box-shadow: 0 0 10px rgba(168, 85, 247, 0.75), 0 0 18px rgba(168, 85, 247, 0.4);
         }
 
+        /* Кнопки выбора предмета: неоново-красная обводка */
         .subject-btn {
-            background: #120c1c;
-            border: 1px solid #a855f7;
-            color: #f3e8ff;
+            background: #14080a;
+            border: 1px solid #ff1744;
+            color: #ffe4e8;
             border-radius: 0.75rem;
             padding: 0.625rem 0.5rem;
             font-size: 0.8rem;
-            box-shadow: 0 0 8px rgba(168, 85, 247, 0.6), inset 0 0 6px rgba(168, 85, 247, 0.15);
+            box-shadow: 0 0 8px rgba(255, 23, 68, 0.6), inset 0 0 6px rgba(255, 23, 68, 0.15);
             transition: box-shadow 0.15s;
         }
-        .subject-btn:hover { box-shadow: 0 0 14px rgba(168, 85, 247, 0.95); }
+        .subject-btn:hover { box-shadow: 0 0 14px rgba(255, 23, 68, 0.95); }
 
         .input-dark {
             width: 100%;
