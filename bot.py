@@ -37,6 +37,7 @@ AUTH_MAX_AGE = 86400          # срок действия initData, секунд
 ADMIN_LINK_TTL = 86400        # срок действия личной админ-ссылки, секунд
 ALERT_COOLDOWN = 600          # одинаковое уведомление не чаще раза в 10 минут, секунд
 SATURDAY_SWITCH_HOUR = 14     # с субботы после этого часа текущей становится следующая неделя
+SUBJECT_HORIZON_DAYS = 56     # на сколько дней вперёд ищем пары по предметам
 
 logging.basicConfig(
     level=logging.INFO,
@@ -179,8 +180,75 @@ HTML_TEMPLATE = r"""
         .bg-custom-border { border-color: #333333; }
         .btn-chocolate { background-color: #8B5A2B; }
         .btn-chocolate:hover { background-color: #A06835; }
-        .card-violet { border: 1px solid #8b5cf6; box-shadow: 0 0 8px rgba(139, 92, 246, 0.45); }
-        .tag-outline { border: 1px solid #8B5A2B; color: #c9955f; border-radius: 0.5rem; }
+
+        .card-violet { border: 1px solid #a855f7; box-shadow: 0 0 8px rgba(168, 85, 247, 0.5); }
+        .card-red-neon { border: 1px solid #ff1744; box-shadow: 0 0 12px rgba(255, 23, 68, 0.65); }
+
+        .tag-outline {
+            background: rgba(139, 90, 43, 0.25);
+            border: 1px solid #8B5A2B;
+            color: #e8c39e;
+            border-radius: 0.5rem;
+        }
+
+        .subject-btn {
+            background: #120c1c;
+            border: 1px solid #a855f7;
+            color: #f3e8ff;
+            border-radius: 0.75rem;
+            padding: 0.625rem 0.5rem;
+            font-size: 0.8rem;
+            box-shadow: 0 0 8px rgba(168, 85, 247, 0.6), inset 0 0 6px rgba(168, 85, 247, 0.15);
+            transition: box-shadow 0.15s;
+        }
+        .subject-btn:hover { box-shadow: 0 0 14px rgba(168, 85, 247, 0.95); }
+
+        .cal-wrap {
+            background: linear-gradient(160deg, #211b16, #141210);
+            border: 1px solid #5a3d24;
+            border-radius: 1rem;
+            padding: 0.75rem;
+            box-shadow: 0 0 18px rgba(139, 90, 43, 0.25);
+        }
+        .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+        .cal-wd { text-align: center; font-size: 0.65rem; color: #71717a; padding: 2px 0; }
+        .cal-day {
+            position: relative;
+            aspect-ratio: 1 / 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 0.6rem;
+            font-size: 0.8rem;
+            color: #e4e4e7;
+            background: #1c1816;
+            border: 1px solid transparent;
+        }
+        .cal-day:hover:not(:disabled) { border-color: #8B5A2B; }
+        .cal-past { opacity: 0.25; cursor: not-allowed; }
+        .cal-today { border-color: #39ff14 !important; box-shadow: 0 0 8px rgba(57, 255, 20, 0.6); color: #39ff14; }
+        .cal-selected { background: #8B5A2B; color: #ffffff; box-shadow: 0 0 12px rgba(139, 90, 43, 0.85); }
+        .cal-dot {
+            position: absolute;
+            bottom: 3px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 4px;
+            height: 4px;
+            border-radius: 9999px;
+            background: #a855f7;
+            box-shadow: 0 0 4px #a855f7;
+        }
+        .cal-nav {
+            width: 2rem;
+            height: 2rem;
+            border-radius: 0.5rem;
+            background: #2a2019;
+            color: #e8c39e;
+            border: 1px solid #5a3d24;
+            font-size: 1.1rem;
+        }
+        .cal-nav:disabled { opacity: 0.25; }
     </style>
 </head>
 <body class="bg-custom-dark text-zinc-100 min-h-screen pb-20">
@@ -210,34 +278,39 @@ HTML_TEMPLATE = r"""
 
         <!-- ДОМАШКА -->
         <div id="tab-homework" class="hidden space-y-4">
-            <div class="bg-custom-card p-4 rounded-xl border border-custom-border shadow-md">
+            <div class="bg-custom-card p-4 rounded-xl card-red-neon">
                 <h2 class="text-sm font-semibold mb-3 text-zinc-200">➕ Добавить домашнее задание</h2>
-                <form id="hw-form" onsubmit="submitHomework(event)" class="space-y-3">
-                    <div>
-                        <label class="block text-[11px] text-zinc-400 mb-1">Дата на которую задано:</label>
-                        <input type="date" id="hw-date" required class="w-full bg-custom-dark border border-custom-border rounded-lg p-2.5 text-sm text-zinc-200 focus:outline-none focus:border-zinc-500">
-                    </div>
-                    <div>
-                        <label class="block text-[11px] text-zinc-400 mb-1">Предмет:</label>
-                        <button type="button" id="hw-subject-btn" onclick="openSubjectPicker()" class="w-full bg-custom-dark border border-custom-border rounded-lg p-2.5 text-sm text-left text-zinc-400 focus:outline-none">Выбрать предмет</button>
-                        <input type="hidden" id="hw-subject" value="">
-                    </div>
-                    <textarea id="hw-task" placeholder="Что задали..." rows="2" maxlength="2000" required class="w-full bg-custom-dark border border-custom-border rounded-lg p-2.5 text-sm text-zinc-200 focus:outline-none focus:border-zinc-500"></textarea>
-                    <button type="submit" class="w-full btn-chocolate text-white py-2.5 rounded-lg text-sm font-medium transition shadow">Опубликовать</button>
-                </form>
+                <button type="button" onclick="openHwWizard()" class="w-full btn-chocolate text-white py-2.5 rounded-lg text-sm font-medium transition shadow">📝 Записать ДЗ</button>
             </div>
             <div id="homework-container" class="space-y-3"></div>
         </div>
     </div>
 
-    <!-- МОДАЛЬНОЕ ОКНО ВЫБОРА ПРЕДМЕТА -->
-    <div id="subject-modal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-        <div class="bg-custom-card border border-custom-border w-full max-w-sm rounded-2xl p-4 space-y-4 shadow-2xl">
+    <!-- ПОШАГОВОЕ ОКНО ЗАПИСИ ДЗ -->
+    <div id="hw-modal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-custom-card border border-custom-border w-full max-w-sm rounded-2xl p-4 space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div class="flex justify-between items-center">
-                <h3 class="text-sm font-semibold text-zinc-200">Выберите предмет</h3>
-                <button type="button" onclick="closeSubjectPicker()" class="text-zinc-400 hover:text-white text-sm font-bold">✕</button>
+                <div class="flex items-center gap-2">
+                    <button type="button" id="hw-back" onclick="showHwStage1()" class="hidden text-zinc-400 hover:text-white text-sm px-1">←</button>
+                    <h3 id="hw-title" class="text-sm font-semibold text-zinc-200">Выберите предмет</h3>
+                </div>
+                <button type="button" onclick="closeHwWizard()" class="text-zinc-400 hover:text-white text-sm font-bold">✕</button>
             </div>
-            <div id="subject-list" class="grid grid-cols-2 gap-2 max-h-72 overflow-y-auto pr-1"></div>
+
+            <!-- Шаг 1: выбор предмета -->
+            <div id="hw-stage-subjects">
+                <div id="subject-list" class="grid grid-cols-2 gap-2 max-h-72 overflow-y-auto pr-1"></div>
+            </div>
+
+            <!-- Шаг 2: дата и текст -->
+            <div id="hw-stage-form" class="hidden space-y-3">
+                <div class="text-xs text-zinc-400">Предмет: <span id="hw-subject-label" class="text-[#c4b5fd] font-semibold"></span></div>
+                <div class="text-[11px] text-zinc-400">Дата на которую задано:</div>
+                <div id="hw-calendar" class="cal-wrap"></div>
+                <div id="hw-date-hint" class="text-[11px] text-zinc-400"></div>
+                <textarea id="hw-task" placeholder="Что задали..." rows="3" maxlength="2000" class="w-full bg-custom-dark border border-custom-border rounded-lg p-2.5 text-sm text-zinc-200 focus:outline-none focus:border-zinc-500"></textarea>
+                <button type="button" onclick="submitHomework()" class="w-full btn-chocolate text-white py-2.5 rounded-lg text-sm font-medium transition shadow">Опубликовать</button>
+            </div>
         </div>
     </div>
 
@@ -279,9 +352,34 @@ HTML_TEMPLATE = r"""
         let activeWeekType = 'current';
         let editingDay = null;
         let currentEditingLessons = [];
+        let hw = { subject: null, date: null, view: null };
+
+        const MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+        const MONTHS_GEN = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
+        const WD_SHORT = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
+        const WD_FULL = ['Воскресенье','Понедельник','Вторник','Среда','Четверг','Пятница','Суббота'];
 
         const esc = s => String(s ?? '').replace(/[&<>"']/g,
             c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+        const pad = n => String(n).padStart(2, '0');
+        function parseIso(iso) {
+            const [y, m, d] = iso.split('-').map(Number);
+            return { y, m: m - 1, d };
+        }
+        function isoOf(y, m, d) { return `${y}-${pad(m + 1)}-${pad(d)}`; }
+        function fmtLong(iso) {
+            const p = parseIso(iso);
+            const wd = new Date(p.y, p.m, p.d).getDay();
+            return `${p.d} ${MONTHS_GEN[p.m]}, ${WD_FULL[wd]}`;
+        }
+        function fmtShort(iso) {
+            const p = parseIso(iso);
+            return `${pad(p.d)}.${pad(p.m + 1)}`;
+        }
+        function subjectLessonDates(subject) {
+            return (appData && appData.subject_dates && appData.subject_dates[subject]) || [];
+        }
 
         function authHeaders(withJson) {
             const h = {};
@@ -294,7 +392,19 @@ HTML_TEMPLATE = r"""
         window.addEventListener('DOMContentLoaded', () => {
             document.getElementById('subject-list').addEventListener('click', e => {
                 const btn = e.target.closest('button[data-subject]');
-                if (btn) pickSubject(btn.dataset.subject);
+                if (btn) chooseSubject(btn.dataset.subject);
+            });
+            document.getElementById('hw-calendar').addEventListener('click', e => {
+                const nav = e.target.closest('[data-nav]');
+                if (nav) {
+                    if (!nav.disabled) shiftMonth(Number(nav.dataset.nav));
+                    return;
+                }
+                const day = e.target.closest('[data-iso]');
+                if (day && !day.disabled) {
+                    hw.date = day.dataset.iso;
+                    renderCalendar();
+                }
             });
             loadData();
         });
@@ -306,13 +416,6 @@ HTML_TEMPLATE = r"""
                 appData = data;
                 if (data.is_admin) {
                     document.getElementById('admin-badge').classList.remove('hidden');
-                }
-                const dateInput = document.getElementById('hw-date');
-                if (dateInput && data.today_date) {
-                    dateInput.min = data.today_date;
-                    if (!dateInput.value || dateInput.value < data.today_date) {
-                        dateInput.value = data.today_date;
-                    }
                 }
                 renderSchedule();
                 renderHomework();
@@ -349,14 +452,14 @@ HTML_TEMPLATE = r"""
                     ? 'border:2px solid #39ff14;box-shadow:0 0 14px rgba(57,255,20,0.75)'
                     : '';
                 const todayTag = isToday
-                    ? '<span class="text-[10px] font-bold text-[#39ff14] mr-2">СЕГОДНЯ</span>'
+                    ? '<span class="text-[10px] font-bold text-[#39ff14]">СЕГОДНЯ</span>'
                     : '';
 
                 return `
                 <div class="${cardClass}" style="${cardStyle}">
                     <div class="flex justify-between items-center mb-2">
                         <span class="font-semibold text-zinc-200 text-sm">${esc(day.day)}</span>
-                        <span class="text-xs text-zinc-400">${todayTag}${esc(day.date)}</span>
+                        <span class="flex items-center gap-1.5">${todayTag}<span class="tag-outline text-[11px] px-2 py-0.5">${esc(day.date)}</span></span>
                     </div>
                     <ul class="space-y-1 text-xs text-zinc-300 mb-2">
                         ${day.lessons.length > 0 ? day.lessons.map(l => `<li class="py-0.5">• ${esc(l)}</li>`).join('') : '<li class="text-zinc-500 italic">Пар нет 🎉</li>'}
@@ -381,18 +484,18 @@ HTML_TEMPLATE = r"""
             const container = document.getElementById('day-hw-container');
 
             modalTitle.innerText = `ДЗ на ${dayName} (${shortDateStr})`;
-            const filteredHw = appData.homework.filter(hw => hw.date_key === fullDateStr);
+            const filteredHw = appData.homework.filter(h => h.date_key === fullDateStr);
 
             if (filteredHw.length === 0) {
                 container.innerHTML = '<p class="text-xs text-zinc-500 italic text-center py-4">На этот день домашних заданий нет ✨</p>';
             } else {
-                container.innerHTML = filteredHw.map(hw => `
+                container.innerHTML = filteredHw.map(h => `
                     <div class="bg-custom-dark p-3 rounded-xl border border-custom-border space-y-1">
                         <div class="flex justify-between items-center">
-                            <span class="font-semibold text-zinc-200 text-xs">${esc(hw.subject)}</span>
-                            <span class="text-[10px] text-zinc-500">${esc(hw.author)}</span>
+                            <span class="font-semibold text-zinc-200 text-xs">${esc(h.subject)}</span>
+                            <span class="text-[10px] text-zinc-500">${esc(h.author)}</span>
                         </div>
-                        <p class="text-xs text-zinc-300 whitespace-pre-wrap">${esc(hw.task)}</p>
+                        <p class="text-xs text-zinc-300 whitespace-pre-wrap">${esc(h.task)}</p>
                     </div>
                 `).join('');
             }
@@ -514,7 +617,7 @@ HTML_TEMPLATE = r"""
             });
         }
 
-        // --- ДОМАШКА ---
+        // --- ДОМАШКА: СПИСОК ---
         function renderHomework() {
             if (!appData) return;
             const container = document.getElementById('homework-container');
@@ -532,73 +635,134 @@ HTML_TEMPLATE = r"""
                 container.innerHTML = '<div class="text-center py-6 text-zinc-500 text-sm">Домашки пока нет ✨</div>';
                 return;
             }
-            container.innerHTML = list.map(hw => `
+            container.innerHTML = list.map(h => `
                 <div class="bg-custom-card p-3.5 rounded-xl border border-custom-border space-y-1 shadow-md">
                     <div class="flex justify-between items-center">
-                        <span class="font-semibold text-zinc-200 text-sm">${esc(hw.subject)}</span>
-                        <span class="tag-outline text-[11px] px-2 py-0.5">${esc(hw.date_key)}</span>
+                        <span class="font-semibold text-zinc-200 text-sm">${esc(h.subject)}</span>
+                        <span class="tag-outline text-[11px] px-2 py-0.5">${esc(h.date_key)}</span>
                     </div>
-                    <p class="text-xs text-zinc-300 whitespace-pre-wrap">${esc(hw.task)}</p>
-                    <div class="text-[10px] text-zinc-500 text-right">Автор: ${esc(hw.author)}</div>
+                    <p class="text-xs text-zinc-300 whitespace-pre-wrap">${esc(h.task)}</p>
+                    <div class="text-[10px] text-zinc-500 text-right">Автор: ${esc(h.author)}</div>
                 </div>
             `).join('');
         }
 
-        function openSubjectPicker() {
-            const list = document.getElementById('subject-list');
-            const subjects = (appData && appData.subjects) || [];
-            list.innerHTML = subjects.length
-                ? subjects.map(s => `
-                    <button type="button" data-subject="${esc(s)}" class="bg-custom-dark border border-custom-border hover:border-[#8B5A2B] text-zinc-200 text-xs py-2.5 px-2 rounded-lg transition">${esc(s)}</button>
-                  `).join('')
+        // --- ДОМАШКА: ПОШАГОВАЯ ЗАПИСЬ ---
+        function openHwWizard() {
+            if (!appData) return;
+            hw = { subject: null, date: null, view: null };
+            showHwStage1();
+            document.getElementById('hw-modal').classList.remove('hidden');
+        }
+
+        function closeHwWizard() {
+            document.getElementById('hw-modal').classList.add('hidden');
+        }
+
+        function showHwStage1() {
+            document.getElementById('hw-title').textContent = 'Выберите предмет';
+            document.getElementById('hw-back').classList.add('hidden');
+            document.getElementById('hw-stage-subjects').classList.remove('hidden');
+            document.getElementById('hw-stage-form').classList.add('hidden');
+
+            const subjects = appData.subjects || [];
+            document.getElementById('subject-list').innerHTML = subjects.length
+                ? subjects.map(s => `<button type="button" data-subject="${esc(s)}" class="subject-btn">${esc(s)}</button>`).join('')
                 : '<p class="col-span-2 text-xs text-zinc-500 text-center py-4">Предметов пока нет</p>';
-            document.getElementById('subject-modal').classList.remove('hidden');
         }
 
-        function closeSubjectPicker() {
-            document.getElementById('subject-modal').classList.add('hidden');
+        function chooseSubject(name) {
+            const dates = subjectLessonDates(name);
+            hw.subject = name;
+            hw.date = dates[0] || appData.today_date;
+            const p = parseIso(hw.date);
+            hw.view = { y: p.y, m: p.m };
+
+            document.getElementById('hw-title').textContent = 'Новое ДЗ';
+            document.getElementById('hw-back').classList.remove('hidden');
+            document.getElementById('hw-stage-subjects').classList.add('hidden');
+            document.getElementById('hw-stage-form').classList.remove('hidden');
+            document.getElementById('hw-subject-label').textContent = name;
+            renderCalendar();
         }
 
-        function pickSubject(name) {
-            document.getElementById('hw-subject').value = name;
-            const btn = document.getElementById('hw-subject-btn');
-            btn.textContent = name;
-            btn.classList.remove('text-zinc-400');
-            btn.classList.add('text-zinc-100');
-            closeSubjectPicker();
+        function shiftMonth(delta) {
+            let { y, m } = hw.view;
+            m += delta;
+            if (m < 0) { m = 11; y--; }
+            if (m > 11) { m = 0; y++; }
+            hw.view = { y, m };
+            renderCalendar();
         }
 
-        function resetSubject() {
-            document.getElementById('hw-subject').value = '';
-            const btn = document.getElementById('hw-subject-btn');
-            btn.textContent = 'Выбрать предмет';
-            btn.classList.remove('text-zinc-100');
-            btn.classList.add('text-zinc-400');
+        function renderCalendar() {
+            const todayParts = parseIso(appData.today_date);
+            const { y, m } = hw.view;
+            const lessonDates = subjectLessonDates(hw.subject);
+            const lessonSet = new Set(lessonDates);
+            const prevAllowed = (y * 12 + m) > (todayParts.y * 12 + todayParts.m);
+            const firstDow = (new Date(y, m, 1).getDay() + 6) % 7;
+            const daysInMonth = new Date(y, m + 1, 0).getDate();
+
+            let cells = '';
+            for (let i = 0; i < firstDow; i++) cells += '<span></span>';
+            for (let d = 1; d <= daysInMonth; d++) {
+                const iso = isoOf(y, m, d);
+                const past = iso < appData.today_date;
+                const cls = ['cal-day'];
+                if (past) cls.push('cal-past');
+                if (iso === appData.today_date) cls.push('cal-today');
+                if (iso === hw.date) cls.push('cal-selected');
+                const dot = lessonSet.has(iso) ? '<i class="cal-dot"></i>' : '';
+                cells += `<button type="button" data-iso="${iso}" class="${cls.join(' ')}" ${past ? 'disabled' : ''}>${d}${dot}</button>`;
+            }
+
+            document.getElementById('hw-calendar').innerHTML = `
+                <div class="flex items-center justify-between mb-2">
+                    <button type="button" data-nav="-1" class="cal-nav" ${prevAllowed ? '' : 'disabled'}>‹</button>
+                    <div class="text-sm font-semibold text-zinc-100">${MONTHS[m]} ${y}</div>
+                    <button type="button" data-nav="1" class="cal-nav">›</button>
+                </div>
+                <div class="cal-grid mb-1">${WD_SHORT.map(w => `<span class="cal-wd">${w}</span>`).join('')}</div>
+                <div class="cal-grid">${cells}</div>
+            `;
+
+            const nearest = lessonDates[0];
+            let hint = `Выбрано: ${fmtLong(hw.date)}`;
+            if (nearest && hw.date === nearest) {
+                hint += ' · ближайшая пара по этому предмету';
+            } else if (nearest) {
+                hint += ` · ближайшая пара: ${fmtShort(nearest)}`;
+            } else {
+                hint += ' · пар по этому предмету в расписании не найдено';
+            }
+            document.getElementById('hw-date-hint').textContent = hint;
         }
 
-        function submitHomework(e) {
-            e.preventDefault();
-            const dateKey = document.getElementById('hw-date').value;
-            const subject = document.getElementById('hw-subject').value;
+        function submitHomework() {
             const task = document.getElementById('hw-task').value.trim();
 
-            if (!subject) {
+            if (!hw.subject) {
                 alert('Выберите предмет');
                 return;
             }
-            if (appData && dateKey < appData.today_date) {
+            if (!hw.date || hw.date < appData.today_date) {
                 alert('Нельзя записать ДЗ на прошедший день');
+                return;
+            }
+            if (!task) {
+                alert('Напишите, что задали');
                 return;
             }
 
             fetch('/api/homework', {
                 method: 'POST',
                 headers: authHeaders(true),
-                body: JSON.stringify({ date_key: dateKey, subject, task })
+                body: JSON.stringify({ date_key: hw.date, subject: hw.subject, task })
             }).then(res => res.json()).then(data => {
                 if (data.status === 'success') {
                     document.getElementById('hw-task').value = '';
-                    resetSubject();
+                    closeHwWizard();
                     loadData();
                 } else {
                     alert('Ошибка: ' + (data.message || 'Не удалось сохранить'));
@@ -784,18 +948,44 @@ def schedule_anchor(now):
     return now.date()
 
 
+SUBJECT_RE = re.compile(r":\s*(.+)$")
+PLACEHOLDER_SUBJECT = "Новый предмет"
+
+
+def parse_subject(lesson):
+    """Достаёт название предмета из строки вида '1 пара (08.30-10.10): Химия'."""
+    m = SUBJECT_RE.search(lesson)
+    if not m:
+        return None
+    name = m.group(1).strip()
+    if not name or name == PLACEHOLDER_SUBJECT:
+        return None
+    return name
+
+
 def get_subjects():
-    """Список всех предметов, взятых из расписания (включая правки админов)."""
+    """Список всех предметов из расписания (включая правки админов)."""
     names = set()
     with db_lock:
         for weeks in SCHEDULE.values():
             for lessons in weeks:
                 for lesson in lessons:
-                    m = re.search(r":\s*(.+)$", lesson)
-                    if m:
-                        names.add(m.group(1).strip())
-    names.discard("Новый предмет")
+                    name = parse_subject(lesson)
+                    if name:
+                        names.add(name)
     return sorted(names)
+
+
+def build_subject_dates(start, days=SUBJECT_HORIZON_DAYS):
+    """Для каждого предмета — список дат (ISO), на которые у него есть пара, начиная с start."""
+    found = {}
+    for i in range(days):
+        d = start + timedelta(days=i)
+        for lesson in get_day_schedule_for_date(d):
+            name = parse_subject(lesson)
+            if name:
+                found.setdefault(name, set()).add(d.isoformat())
+    return {name: sorted(dates) for name, dates in found.items()}
 
 
 def get_week_schedule_data(base_date, shift_weeks=0):
@@ -836,6 +1026,7 @@ def get_api_data():
     current_week_schedule = get_week_schedule_data(anchor, shift_weeks=0)
     next_week_schedule = get_week_schedule_data(anchor, shift_weeks=1)
     subjects = get_subjects()
+    subject_dates = build_subject_dates(today)
 
     with db_lock, get_db() as conn:
         cursor = conn.cursor()
@@ -848,6 +1039,7 @@ def get_api_data():
         "next_week": next_week_schedule,
         "homework": homework,
         "subjects": subjects,
+        "subject_dates": subject_dates,
         "today_date": today.isoformat(),
     })
 
