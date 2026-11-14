@@ -33,11 +33,12 @@ BY_TZ = ZoneInfo("Europe/Minsk")
 DB_FILE = os.environ.get("DB_PATH", "bot_webapp_data.db")
 MINIAPP_SHORT_NAME = "ezs"
 WEBAPP_URL = "https://igrik-bot-new-production.up.railway.app/webapp"
-AUTH_MAX_AGE = 86400          # срок действия initData, секунд
-ADMIN_LINK_TTL = 86400        # срок действия личной админ-ссылки, секунд
-ALERT_COOLDOWN = 600          # одинаковое уведомление не чаще раза в 10 минут, секунд
-SATURDAY_SWITCH_HOUR = 14     # с субботы после этого часа текущей становится следующая неделя
-SUBJECT_HORIZON_DAYS = 56     # на сколько дней вперёд ищем пары по предметам
+AUTH_MAX_AGE = 86400            # срок действия initData, секунд
+ADMIN_LINK_TTL = 86400          # срок действия личной админ-ссылки, секунд
+ALERT_COOLDOWN = 600            # одинаковое уведомление не чаще раза в 10 минут, секунд
+SATURDAY_SWITCH_HOUR = 14       # с субботы после этого часа текущей становится следующая неделя
+SUBJECT_HORIZON_DAYS = 56       # на сколько дней вперёд ищем пары по предметам
+HOMEWORK_CLEAN_INTERVAL = 1800  # как часто чистить прошедшие ДЗ, секунд
 
 logging.basicConfig(
     level=logging.INFO,
@@ -170,279 +171,725 @@ HTML_TEMPLATE = r"""
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>ЭЗС 12-26</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        .bg-custom-dark { background-color: #121212; }
-        .bg-custom-card { background-color: #1a1a1a; }
-        .bg-custom-border { border-color: #333333; }
-        .btn-chocolate { background-color: #8B5A2B; }
-        .btn-chocolate:hover { background-color: #A06835; }
-
-        .card-violet { border: 1px solid #a855f7; box-shadow: 0 0 8px rgba(168, 85, 247, 0.5); }
-        .card-red-neon { border: 1px solid #ff1744; box-shadow: 0 0 12px rgba(255, 23, 68, 0.65); }
-
-        /* Неоново-фиолетовая рамка большого окна редактирования дня */
-        .modal-neon {
-            border: 1px solid #a855f7;
-            box-shadow: 0 0 14px rgba(168, 85, 247, 0.65), 0 0 26px rgba(168, 85, 247, 0.25);
+        :root {
+            --bg: #0A0807;
+            --text: #FFF6EC;
+            --text-2: #B7A593;
+            --text-3: #7D6D5E;
+            --latte: #E9C9A4;
+            --caramel-1: #E0A06A;
+            --caramel-2: #A8683A;
+            --ease: cubic-bezier(0.16, 1, 0.3, 1);
         }
 
-        /* Неоново-красная рамка большого окна выбора предмета */
-        .hw-neon-red {
-            border: 1px solid #ff1744;
-            box-shadow: 0 0 14px rgba(255, 23, 68, 0.65), 0 0 26px rgba(255, 23, 68, 0.25);
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+        html, body {
+            margin: 0;
+            background: var(--bg);
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, system-ui, sans-serif;
+            -webkit-font-smoothing: antialiased;
+            overflow-x: hidden;
         }
 
-        /* Фиолетовая рамка маленькой карточки строки предмета в редакторе дня */
-        .lesson-card {
-            border: 1px solid #a855f7;
-            border-radius: 0.75rem;
-            padding: 0.5rem;
-            box-shadow: 0 0 8px rgba(168, 85, 247, 0.55), inset 0 0 6px rgba(168, 85, 247, 0.12);
+        /* --- Амбиент-фон: медленно дрейфующие блики, сдвигаются при скролле --- */
+        .mesh {
+            position: fixed;
+            inset: -20%;
+            z-index: 0;
+            pointer-events: none;
+            will-change: transform;
+            transition: transform 0.6s var(--ease);
+        }
+        .blob {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(90px);
+            opacity: 0.3;
+            animation: drift 22s ease-in-out infinite alternate;
+        }
+        .b1 { width: 55vw; height: 55vw; background: #C77B43; top: -6%; left: -10%; }
+        .b2 { width: 50vw; height: 50vw; background: #6B3F22; top: 34%; right: -16%; animation-duration: 28s; }
+        .b3 { width: 40vw; height: 40vw; background: #E9A86A; bottom: -4%; left: 18%; opacity: 0.16; animation-duration: 25s; }
+        @keyframes drift {
+            from { transform: translate3d(0, 0, 0) scale(1); }
+            to { transform: translate3d(6vw, -4vh, 0) scale(1.12); }
         }
 
-        .tag-outline {
-            background: rgba(139, 90, 43, 0.25);
-            border: 1px solid #8B5A2B;
-            color: #e8c39e;
-            border-radius: 0.5rem;
+        /* --- Контейнер приложения: уходит в глубину при открытой шторке --- */
+        #app {
+            position: relative;
+            z-index: 1;
+            max-width: 460px;
+            margin: 0 auto;
+            padding: 14px 16px 120px;
+            transform-origin: 50% 0;
+            transition: transform 0.55s var(--ease), filter 0.45s var(--ease);
+        }
+        body.sheet-open #app {
+            transform: scale(0.97);
+            filter: brightness(0.6);
         }
 
-        /* Рамки переключателей */
-        .neon-frame { padding: 2px; border-radius: 0.75rem; }
-        .neon-inner { border-radius: 0.6rem; }
-        .neon-shift {
-            background: linear-gradient(90deg, #a855f7, #ff1744, #a855f7, #ff1744, #a855f7);
-            background-size: 200% 100%;
-            animation: neonShift 4s linear infinite;
-            box-shadow: 0 0 10px rgba(168, 85, 247, 0.6), 0 0 16px rgba(255, 23, 68, 0.35);
+        /* --- Стекло: полупрозрачный слой, размытие, градиентная обводка, многослойная тень --- */
+        .glass {
+            position: relative;
+            background: linear-gradient(160deg, rgba(44, 33, 26, 0.62), rgba(20, 15, 12, 0.6));
+            -webkit-backdrop-filter: blur(16px) saturate(150%);
+            backdrop-filter: blur(16px) saturate(150%);
+            border-radius: 22px;
+            box-shadow:
+                inset 0 1px 0 rgba(255, 255, 255, 0.06),
+                0 1px 2px rgba(0, 0, 0, 0.45),
+                0 18px 40px -22px rgba(0, 0, 0, 0.95);
         }
-        @keyframes neonShift {
-            from { background-position: 0% 50%; }
-            to { background-position: 100% 50%; }
-        }
-        .neon-violet {
-            background: #a855f7;
-            box-shadow: 0 0 10px rgba(168, 85, 247, 0.75), 0 0 18px rgba(168, 85, 247, 0.4);
+        .glass::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: inherit;
+            padding: 1px;
+            background: linear-gradient(135deg, rgba(233, 201, 164, 0.38), rgba(233, 201, 164, 0.04) 42%, rgba(224, 160, 106, 0.28));
+            -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+            -webkit-mask-composite: xor;
+            mask-composite: exclude;
+            pointer-events: none;
         }
 
-        /* Маленькие кнопки предметов: неоново-фиолетовая обводка */
-        .subject-btn {
-            background: #120c1c;
-            border: 1px solid #a855f7;
-            color: #f3e8ff;
-            border-radius: 0.75rem;
-            padding: 0.625rem 0.5rem;
-            font-size: 0.8rem;
-            box-shadow: 0 0 8px rgba(168, 85, 247, 0.6), inset 0 0 6px rgba(168, 85, 247, 0.15);
-            transition: box-shadow 0.15s;
+        /* --- Шапка --- */
+        .hdr {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 6px 4px 4px;
         }
-        .subject-btn:hover { box-shadow: 0 0 14px rgba(168, 85, 247, 0.95); }
+        .brand {
+            font-size: 22px;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+        }
+        .greet {
+            font-size: 14px;
+            color: var(--text-2);
+            margin: 2px 4px 14px;
+        }
+        .badge {
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 0.06em;
+            padding: 6px 11px;
+            border-radius: 999px;
+            background: linear-gradient(135deg, var(--caramel-1), var(--caramel-2));
+            color: #fff;
+            box-shadow: 0 8px 18px -10px rgba(224, 160, 106, 0.9);
+        }
 
-        .input-dark {
+        /* --- Виджет каникул --- */
+        .countdown {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 14px 16px;
+            margin-bottom: 14px;
+            border-radius: 20px;
+        }
+        .cd-num {
+            font-size: 28px;
+            font-weight: 800;
+            color: var(--latte);
+            font-variant-numeric: tabular-nums;
+            min-width: 56px;
+            text-align: center;
+        }
+        .cd-txt { font-size: 13px; color: var(--text-2); line-height: 1.35; }
+        .cd-txt b { color: var(--text); font-weight: 700; display: block; font-size: 14px; }
+
+        /* --- Сегмент-контрол с физически переезжающим индикатором --- */
+        .seg {
+            position: relative;
+            display: flex;
+            padding: 4px;
+            border-radius: 18px;
+            margin-bottom: 14px;
+        }
+        .seg-ind {
+            position: absolute;
+            left: 0;
+            top: 4px;
+            bottom: 4px;
+            width: 0;
+            border-radius: 14px;
+            background: linear-gradient(135deg, var(--caramel-1), var(--caramel-2));
+            box-shadow: 0 10px 24px -10px rgba(224, 160, 106, 0.8);
+            transition: transform 0.55s var(--ease), width 0.55s var(--ease);
+        }
+        .seg button {
+            position: relative;
+            z-index: 1;
+            flex: 1;
+            border: 0;
+            background: none;
+            color: var(--text-2);
+            font: inherit;
+            font-size: 14px;
+            font-weight: 700;
+            padding: 11px 8px;
+            border-radius: 14px;
+            cursor: pointer;
+            transition: color 0.35s var(--ease);
+        }
+        .seg button.on { color: #fff; }
+        .seg-sm { padding: 3px; border-radius: 14px; margin-bottom: 16px; }
+        .seg-sm .seg-ind { top: 3px; bottom: 3px; border-radius: 11px; }
+        .seg-sm button { padding: 9px 6px; font-size: 12.5px; border-radius: 11px; }
+
+        /* --- Секции и переходы --- */
+        .hidden { display: none !important; }
+        .enter { animation: enter 0.6s var(--ease) both; }
+        @keyframes enter {
+            from { opacity: 0; transform: translateY(12px) scale(0.985); }
+            to { opacity: 1; transform: none; }
+        }
+
+        .stack { display: flex; flex-direction: column; gap: 14px; }
+        .stack-sm { display: flex; flex-direction: column; gap: 12px; }
+
+        /* --- Карточки с 3D-наклоном --- */
+        .card {
+            padding: 18px 18px 16px;
+            border-radius: 24px;
+            transform-style: preserve-3d;
+            transition: transform 0.35s var(--ease), box-shadow 0.35s var(--ease);
+            will-change: transform;
+        }
+        .card.today {
+            box-shadow:
+                0 0 0 1px rgba(224, 160, 106, 0.55),
+                0 0 30px -6px rgba(224, 160, 106, 0.45),
+                0 18px 40px -22px rgba(0, 0, 0, 0.95);
+        }
+        .card.today::before {
+            background: linear-gradient(135deg, #F3C48F, rgba(224, 160, 106, 0.55) 45%, rgba(168, 104, 58, 0.5));
+        }
+        .shine {
+            position: absolute;
+            inset: 0;
+            border-radius: inherit;
+            background: radial-gradient(circle at var(--mx, 50%) var(--my, 50%), rgba(255, 240, 220, 0.16), transparent 55%);
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+        }
+        .card.tilt.active .shine { opacity: 1; }
+
+        .dhead {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        .dname { font-size: 17px; font-weight: 800; letter-spacing: -0.01em; }
+        .tag {
+            font-size: 11px;
+            font-weight: 700;
+            padding: 5px 10px;
+            border-radius: 999px;
+            background: rgba(224, 160, 106, 0.14);
+            color: var(--latte);
+            border: 1px solid rgba(224, 160, 106, 0.35);
+            white-space: nowrap;
+        }
+        .today-tag {
+            font-size: 10px;
+            font-weight: 800;
+            letter-spacing: 0.14em;
+            color: #F3C48F;
+            margin-right: 8px;
+        }
+        .lrow {
+            display: grid;
+            grid-template-columns: 92px 1fr;
+            gap: 10px;
+            align-items: baseline;
+            font-size: 14px;
+            padding: 4px 0;
+        }
+        .ltime {
+            font-size: 11px;
+            color: var(--text-3);
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+        }
+        .lsub { font-weight: 600; color: #EFE3D3; }
+        .empty { color: var(--text-3); font-style: italic; font-size: 14px; padding: 4px 0; }
+        .dact {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+            margin-top: 14px;
+            padding-top: 12px;
+            border-top: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        /* --- Карточки домашки --- */
+        .hw-item { padding: 16px 16px 14px; }
+        .hw-subj { font-size: 16px; font-weight: 800; letter-spacing: -0.01em; }
+        .hw-task { font-size: 14.5px; color: #D9C8B5; white-space: pre-wrap; line-height: 1.5; margin: 8px 0 10px; }
+        .hw-author { font-size: 11px; color: var(--text-3); text-align: right; }
+
+        .sec-title { font-size: 15px; font-weight: 800; margin-bottom: 12px; }
+        .row2 { display: flex; gap: 8px; }
+        .muted { font-size: 13px; color: var(--text-2); }
+        .small { font-size: 12px; }
+        .acc { color: #F3C48F; font-weight: 700; }
+        .label {
+            font-size: 11px;
+            color: var(--text-3);
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        /* --- Кнопки --- */
+        .btn {
+            border: 0;
+            cursor: pointer;
+            font: inherit;
+            font-weight: 700;
+            font-size: 14px;
+            border-radius: 15px;
+            padding: 13px 16px;
+            color: #fff;
+            background: linear-gradient(135deg, var(--caramel-1), var(--caramel-2));
+            box-shadow: 0 12px 26px -14px rgba(224, 160, 106, 0.9);
+            transition: transform 0.2s var(--ease), filter 0.2s;
+        }
+        .btn:hover { filter: brightness(1.06); }
+        .btn:active { transform: scale(0.97); }
+        .btn-sm { padding: 8px 12px; font-size: 12.5px; border-radius: 12px; }
+        .btn-ghost {
+            background: rgba(255, 255, 255, 0.06);
+            color: var(--latte);
+            border: 1px solid rgba(255, 255, 255, 0.09);
+            box-shadow: none;
+        }
+        .btn-danger {
+            background: rgba(120, 30, 30, 0.35);
+            color: #F2A09A;
+            border: 1px solid rgba(242, 160, 154, 0.22);
+            box-shadow: none;
+        }
+        .btn-block { width: 100%; }
+
+        /* --- Шторки (bottom sheets) --- */
+        .sheet-bd {
+            position: fixed;
+            inset: 0;
+            z-index: 55;
+            background: rgba(0, 0, 0, 0.45);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.45s var(--ease);
+        }
+        .sheet-bd.open { opacity: 1; pointer-events: auto; }
+        .sheet {
+            position: fixed;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 60;
+            max-height: 88vh;
+            overflow-y: auto;
+            padding: 10px 18px calc(20px + env(safe-area-inset-bottom, 0px));
+            border-radius: 28px 28px 0 0;
+            background: linear-gradient(180deg, rgba(44, 34, 27, 0.86), rgba(18, 14, 11, 0.94));
+            -webkit-backdrop-filter: blur(22px) saturate(160%);
+            backdrop-filter: blur(22px) saturate(160%);
+            border: 1px solid rgba(233, 201, 164, 0.14);
+            border-bottom: 0;
+            box-shadow: 0 -24px 60px -20px rgba(0, 0, 0, 0.9);
+            transform: translateY(104%);
+            transition: transform 0.6s var(--ease);
+            max-width: 460px;
+            margin: 0 auto;
+        }
+        .sheet.open { transform: translateY(0); }
+        .handle {
+            width: 40px;
+            height: 5px;
+            border-radius: 9px;
+            background: rgba(255, 255, 255, 0.2);
+            margin: 0 auto 14px;
+        }
+        .sh-title {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 18px;
+            font-weight: 800;
+            margin-bottom: 14px;
+            gap: 8px;
+        }
+        .sh-left { display: flex; align-items: center; gap: 8px; }
+        .sh-close, .sh-back {
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            border: 0;
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--text-2);
+            font-size: 14px;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        .sh-back { border-radius: 12px; color: var(--latte); }
+
+        /* --- Поля ввода --- */
+        .input {
             width: 100%;
-            background: #121212;
-            border: 1px solid #333333;
-            border-radius: 0.5rem;
-            padding: 0.5rem 0.6rem;
-            font-size: 0.8rem;
-            color: #e4e4e7;
+            background: rgba(10, 8, 7, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.09);
+            border-radius: 14px;
+            padding: 12px 14px;
+            color: var(--text);
+            font: inherit;
+            font-size: 15px;
+            transition: border-color 0.2s, box-shadow 0.2s;
         }
-        .input-dark:focus { outline: none; border-color: #71717a; }
+        .input:focus {
+            outline: none;
+            border-color: rgba(224, 160, 106, 0.7);
+            box-shadow: 0 0 0 4px rgba(224, 160, 106, 0.12);
+        }
+        textarea.input { resize: vertical; }
+        .input-sm { padding: 10px 12px; font-size: 14px; }
 
-        .seg-btn {
-            background: #27272a;
-            color: #d4d4d8;
-            border: 1px solid #333333;
-            border-radius: 0.5rem;
-            padding: 0.45rem 0.4rem;
-            font-size: 0.75rem;
-            line-height: 1.2;
+        /* --- Предметы --- */
+        .subj-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; max-height: 60vh; overflow-y: auto; padding-right: 2px; }
+        .subj {
+            padding: 14px 8px;
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.09);
+            background: rgba(255, 255, 255, 0.04);
+            color: var(--text);
+            font: inherit;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: transform 0.2s var(--ease), border-color 0.25s, background 0.25s;
         }
-        .seg-btn.active {
-            background: #8B5A2B;
-            color: #ffffff;
-            border-color: #8B5A2B;
-            box-shadow: 0 0 8px rgba(139, 90, 43, 0.6);
-        }
+        .subj:active { transform: scale(0.95); }
+        .subj:hover { border-color: rgba(224, 160, 106, 0.6); background: rgba(224, 160, 106, 0.08); }
 
-        .cal-wrap {
-            background: linear-gradient(160deg, #211b16, #141210);
-            border: 1px solid #5a3d24;
-            border-radius: 1rem;
-            padding: 0.75rem;
-            box-shadow: 0 0 18px rgba(139, 90, 43, 0.25);
+        /* --- Календарь --- */
+        .cal {
+            padding: 14px;
+            border-radius: 20px;
+            background: rgba(10, 8, 7, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.06);
         }
+        .cal-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+        .cal-month { font-size: 15px; font-weight: 800; }
+        .cal-nav {
+            width: 34px;
+            height: 34px;
+            border-radius: 11px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--latte);
+            font-size: 18px;
+            cursor: pointer;
+        }
+        .cal-nav:disabled { opacity: 0.25; }
         .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
-        .cal-wd { text-align: center; font-size: 0.65rem; color: #71717a; padding: 2px 0; }
+        .cal-wd {
+            text-align: center;
+            font-size: 11px;
+            color: var(--text-3);
+            font-weight: 700;
+            padding: 4px 0;
+        }
         .cal-day {
             position: relative;
             aspect-ratio: 1 / 1;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 0.6rem;
-            font-size: 0.8rem;
-            color: #e4e4e7;
-            background: #1c1816;
+            border-radius: 12px;
             border: 1px solid transparent;
+            background: transparent;
+            color: var(--text);
+            font: inherit;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.2s var(--ease);
         }
-        .cal-day:hover:not(:disabled) { border-color: #8B5A2B; }
-        .cal-past { opacity: 0.25; cursor: not-allowed; }
-        .cal-today { border-color: #39ff14 !important; box-shadow: 0 0 8px rgba(57, 255, 20, 0.6); color: #39ff14; }
-        .cal-selected { background: #8B5A2B; color: #ffffff; box-shadow: 0 0 12px rgba(139, 90, 43, 0.85); }
+        .cal-day:active:not(:disabled) { transform: scale(0.88); }
+        .cal-day:hover:not(:disabled) { background: rgba(255, 255, 255, 0.06); }
+        .cal-past { opacity: 0.25; cursor: default; }
+        .cal-today { border-color: rgba(224, 160, 106, 0.75); color: #F3C48F; }
+        .cal-selected {
+            background: linear-gradient(135deg, var(--caramel-1), var(--caramel-2));
+            color: #fff;
+            box-shadow: 0 8px 18px -10px rgba(224, 160, 106, 0.95);
+        }
         .cal-dot {
             position: absolute;
-            bottom: 3px;
+            bottom: 4px;
             left: 50%;
             transform: translateX(-50%);
             width: 4px;
             height: 4px;
-            border-radius: 9999px;
-            background: #a855f7;
-            box-shadow: 0 0 4px #a855f7;
+            border-radius: 50%;
+            background: var(--latte);
         }
-        .cal-nav {
-            width: 2rem;
-            height: 2rem;
-            border-radius: 0.5rem;
-            background: #2a2019;
-            color: #e8c39e;
-            border: 1px solid #5a3d24;
-            font-size: 1.1rem;
+
+        /* --- Редактор расписания --- */
+        .lesson-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px;
+            border-radius: 16px;
+            background: rgba(10, 8, 7, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.06);
         }
-        .cal-nav:disabled { opacity: 0.25; }
+        .lesson-row .lbl {
+            font-size: 10px;
+            color: var(--text-3);
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+        .del-row {
+            width: 36px;
+            height: 36px;
+            flex-shrink: 0;
+            border-radius: 12px;
+            border: 0;
+            background: rgba(120, 30, 30, 0.35);
+            color: #F2A09A;
+            font-size: 13px;
+            cursor: pointer;
+        }
+        .add-toggle {
+            width: 100%;
+            background: transparent;
+            border: 1px dashed rgba(224, 160, 106, 0.4);
+            color: var(--latte);
+            font: inherit;
+            font-size: 14px;
+            font-weight: 700;
+            padding: 13px;
+            border-radius: 15px;
+            cursor: pointer;
+        }
+        .add-panel {
+            display: none;
+            flex-direction: column;
+            gap: 12px;
+            padding: 14px;
+            border-radius: 18px;
+            background: rgba(10, 8, 7, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.07);
+        }
+        .add-panel.open { display: flex; }
+        .mini-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .slot {
+            padding: 11px 6px;
+            border-radius: 14px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            background: rgba(255, 255, 255, 0.04);
+            color: var(--text-2);
+            font: inherit;
+            font-size: 13px;
+            font-weight: 700;
+            line-height: 1.25;
+            cursor: pointer;
+            transition: all 0.25s var(--ease);
+        }
+        .slot small { display: block; font-size: 10.5px; font-weight: 600; opacity: 0.8; margin-top: 3px; }
+        .slot.on {
+            background: linear-gradient(135deg, var(--caramel-1), var(--caramel-2));
+            border-color: transparent;
+            color: #fff;
+            box-shadow: 0 8px 18px -10px rgba(224, 160, 106, 0.9);
+        }
+
+        /* --- Скелетоны загрузки --- */
+        .skel {
+            position: relative;
+            overflow: hidden;
+            height: 150px;
+            border-radius: 24px;
+            background: rgba(255, 255, 255, 0.035);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        .skel::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(100deg, transparent 30%, rgba(255, 240, 220, 0.09) 50%, transparent 70%);
+            transform: translateX(-100%);
+            animation: shimmer 1.4s infinite;
+        }
+        @keyframes shimmer { to { transform: translateX(100%); } }
+
+        .toast-empty {
+            text-align: center;
+            padding: 36px 12px;
+            color: var(--text-3);
+            font-size: 14px;
+        }
     </style>
 </head>
-<body class="bg-custom-dark text-zinc-100 min-h-screen pb-20">
-    <div class="max-w-md mx-auto p-4">
-        <header class="flex justify-between items-center mb-6 pt-2">
-            <h1 class="text-xl font-bold text-zinc-100 flex items-center gap-2">
-                <span>🤎</span> ЭЗС 12-26
-            </h1>
-            <span id="admin-badge" class="hidden btn-chocolate text-white text-xs px-2.5 py-1 rounded-full font-medium shadow">Админ</span>
+<body>
+    <div class="mesh" id="mesh">
+        <span class="blob b1"></span>
+        <span class="blob b2"></span>
+        <span class="blob b3"></span>
+    </div>
+
+    <div id="app">
+        <header class="hdr">
+            <div class="brand">🤎 ЭЗС 12-26</div>
+            <span id="admin-badge" class="badge hidden">Админ</span>
         </header>
+        <div id="greeting" class="greet"></div>
 
-        <!-- Вкладки: переливающаяся фиолетово-красная рамка -->
-        <div class="neon-frame neon-shift mb-6">
-            <div class="flex bg-custom-card p-1 neon-inner">
-                <button onclick="switchTab('schedule')" id="btn-schedule" class="flex-1 py-2 text-sm font-medium rounded-lg btn-chocolate text-white transition">Расписание</button>
-                <button onclick="switchTab('homework')" id="btn-homework" class="flex-1 py-2 text-sm font-medium rounded-lg text-zinc-400 transition">Домашка</button>
-            </div>
+        <div id="countdown" class="glass countdown hidden"></div>
+
+        <div id="seg-main" class="seg glass">
+            <span class="seg-ind"></span>
+            <button class="on" data-tab="schedule" onclick="switchTab('schedule')">Расписание</button>
+            <button data-tab="homework" onclick="switchTab('homework')">Домашка</button>
         </div>
 
-        <!-- РАСПИСАНИЕ -->
-        <div id="tab-schedule" class="space-y-4">
-            <!-- Переключатель недель: неоново-фиолетовая рамка -->
-            <div class="neon-frame neon-violet">
-                <div class="flex bg-custom-card p-1 neon-inner">
-                    <button onclick="setWeek('current')" id="week-btn-current" class="flex-1 py-1.5 text-xs font-medium rounded btn-chocolate text-white shadow">Эту неделю</button>
-                    <button onclick="setWeek('next')" id="week-btn-next" class="flex-1 py-1.5 text-xs font-medium rounded text-zinc-400">Следующую</button>
+        <section id="tab-schedule">
+            <div id="seg-week" class="seg seg-sm glass">
+                <span class="seg-ind"></span>
+                <button class="on" data-week="current" onclick="setWeek('current')">Эту неделю</button>
+                <button data-week="next" onclick="setWeek('next')">Следующую</button>
+            </div>
+            <div id="schedule-container" class="stack"></div>
+        </section>
+
+        <section id="tab-homework" class="hidden">
+            <div class="glass card">
+                <div class="sec-title">Домашнее задание</div>
+                <div class="row2">
+                    <button class="btn btn-block" onclick="openHwWizard()">Записать ДЗ</button>
+                    <button class="btn btn-danger hidden" id="btn-del-hw" onclick="openDeleteHwModal()">Удалить</button>
                 </div>
             </div>
+            <div id="homework-container" class="stack" style="margin-top:14px"></div>
+        </section>
+    </div>
 
-            <div id="schedule-container" class="space-y-3"></div>
-        </div>
+    <div id="bd" class="sheet-bd" onclick="closeAllSheets()"></div>
 
-        <!-- ДОМАШКА -->
-        <div id="tab-homework" class="hidden space-y-4">
-            <div class="bg-custom-card p-4 rounded-xl card-red-neon">
-                <h2 class="text-sm font-semibold mb-3 text-zinc-200">➕ Добавить домашнее задание</h2>
-                <button type="button" onclick="openHwWizard()" class="w-full btn-chocolate text-white py-2.5 rounded-lg text-sm font-medium transition shadow">📝 Записать ДЗ</button>
+    <!-- Шторка: запись ДЗ -->
+    <div id="hw-sheet" class="sheet glass">
+        <div class="handle"></div>
+        <div class="sh-title">
+            <div class="sh-left">
+                <button id="hw-back" class="sh-back hidden" onclick="showHwStage1()">←</button>
+                <span id="hw-title">Выберите предмет</span>
             </div>
-            <div id="homework-container" class="space-y-3"></div>
+            <button class="sh-close" onclick="closeHwWizard()">✕</button>
+        </div>
+        <div id="hw-stage-subjects">
+            <div id="subject-list" class="subj-grid"></div>
+        </div>
+        <div id="hw-stage-form" class="hidden stack-sm">
+            <div class="muted">Предмет: <span id="hw-subject-label" class="acc"></span></div>
+            <div class="label">Дата</div>
+            <div id="hw-calendar" class="cal"></div>
+            <div id="hw-date-hint" class="muted small"></div>
+            <textarea id="hw-task" class="input" rows="3" maxlength="2000" placeholder="Что задали..."></textarea>
+            <button class="btn btn-block" onclick="submitHomework()">Опубликовать</button>
         </div>
     </div>
 
-    <!-- ПОШАГОВОЕ ОКНО ЗАПИСИ ДЗ (большая карточка: неоново-красная рамка) -->
-    <div id="hw-modal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-        <div class="bg-custom-card hw-neon-red w-full max-w-sm rounded-2xl p-4 space-y-4 max-h-[90vh] overflow-y-auto">
-            <div class="flex justify-between items-center">
-                <div class="flex items-center gap-2">
-                    <button type="button" id="hw-back" onclick="showHwStage1()" class="hidden text-zinc-400 hover:text-white text-sm px-1">←</button>
-                    <h3 id="hw-title" class="text-sm font-semibold text-zinc-200">Выберите предмет</h3>
-                </div>
-                <button type="button" onclick="closeHwWizard()" class="text-zinc-400 hover:text-white text-sm font-bold">✕</button>
-            </div>
-
-            <!-- Шаг 1: выбор предмета -->
-            <div id="hw-stage-subjects">
-                <div id="subject-list" class="grid grid-cols-2 gap-2 max-h-72 overflow-y-auto pr-1"></div>
-            </div>
-
-            <!-- Шаг 2: дата и текст -->
-            <div id="hw-stage-form" class="hidden space-y-3">
-                <div class="text-xs text-zinc-400">Предмет: <span id="hw-subject-label" class="text-[#c4b5fd] font-semibold"></span></div>
-                <div class="text-[11px] text-zinc-400">Дата на которую задано:</div>
-                <div id="hw-calendar" class="cal-wrap"></div>
-                <div id="hw-date-hint" class="text-[11px] text-zinc-400"></div>
-                <textarea id="hw-task" placeholder="Что задали..." rows="3" maxlength="2000" class="w-full bg-custom-dark border border-custom-border rounded-lg p-2.5 text-sm text-zinc-200 focus:outline-none focus:border-zinc-500"></textarea>
-                <button type="button" onclick="submitHomework()" class="w-full btn-chocolate text-white py-2.5 rounded-lg text-sm font-medium transition shadow">Опубликовать</button>
-            </div>
+    <!-- Шторка: удаление ДЗ (админ) -->
+    <div id="del-sheet" class="sheet glass">
+        <div class="handle"></div>
+        <div class="sh-title">
+            <span>Удалить ДЗ</span>
+            <button class="sh-close" onclick="closeDeleteHwModal()">✕</button>
         </div>
+        <div id="del-hw-list" class="stack-sm"></div>
     </div>
 
-    <!-- МОДАЛЬНОЕ ОКНО ПРОСМОТРА ДЗ ДНЯ (неоново-фиолетовая рамка) -->
-    <div id="day-hw-modal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-        <div class="bg-custom-card modal-neon w-full max-w-sm rounded-2xl p-4 space-y-4">
-            <div class="flex justify-between items-center">
-                <h3 id="day-hw-modal-title" class="text-sm font-semibold text-zinc-200">Домашнее задание</h3>
-                <button onclick="closeDayHwModal()" class="text-zinc-400 hover:text-white text-sm font-bold">✕</button>
-            </div>
-            <div id="day-hw-container" class="space-y-2 max-h-60 overflow-y-auto pr-1"></div>
-            <button onclick="closeDayHwModal()" class="w-full btn-chocolate text-white text-xs py-2.5 rounded-xl font-medium transition shadow">Закрыть</button>
+    <!-- Шторка: ДЗ на день -->
+    <div id="day-sheet" class="sheet glass">
+        <div class="handle"></div>
+        <div class="sh-title">
+            <span id="day-hw-modal-title">Домашнее задание</span>
+            <button class="sh-close" onclick="closeDayHwModal()">✕</button>
         </div>
+        <div id="day-hw-container" class="stack-sm"></div>
+        <button class="btn btn-block" style="margin-top:14px" onclick="closeDayHwModal()">Закрыть</button>
     </div>
 
-    <!-- МОДАЛЬНОЕ ОКНО РЕДАКТИРОВАНИЯ ДНЯ (большая карточка: неоново-фиолетовая рамка) -->
-    <div id="edit-modal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-        <div class="bg-custom-card modal-neon w-full max-w-sm rounded-2xl p-4 space-y-3 max-h-[90vh] overflow-y-auto">
-            <div class="flex justify-between items-center">
-                <h3 id="modal-title" class="text-sm font-semibold text-zinc-200">Редактирование дня</h3>
-                <button onclick="closeEditModal()" class="text-zinc-400 hover:text-white text-sm font-bold">✕</button>
-            </div>
+    <!-- Шторка: редактор дня (админ) -->
+    <div id="edit-sheet" class="sheet glass">
+        <div class="handle"></div>
+        <div class="sh-title">
+            <span id="modal-title">Редактирование дня</span>
+            <button class="sh-close" onclick="closeEditModal()">✕</button>
+        </div>
+        <div class="stack-sm">
+            <div id="modal-lessons-container" class="stack-sm"></div>
 
-            <div id="modal-lessons-container" class="space-y-2"></div>
+            <button type="button" id="add-toggle" class="add-toggle" onclick="toggleAddPanel()">+ Добавить пару / урок</button>
 
-            <button type="button" id="add-toggle" onclick="toggleAddPanel()" class="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs py-2 rounded-lg font-medium transition border border-custom-border">➕ Добавить пару / урок</button>
-
-            <div id="add-panel" class="hidden space-y-2 border border-custom-border rounded-xl p-3">
-                <div class="grid grid-cols-2 gap-2">
-                    <button type="button" id="kind-pair" onclick="setLessonKind('pair')" class="seg-btn">Пара</button>
-                    <button type="button" id="kind-lesson" onclick="setLessonKind('lesson')" class="seg-btn">Урок</button>
+            <div id="add-panel" class="add-panel">
+                <div class="mini-grid">
+                    <button type="button" id="kind-pair" class="slot" onclick="setLessonKind('pair')">Пара</button>
+                    <button type="button" id="kind-lesson" class="slot" onclick="setLessonKind('lesson')">Урок</button>
                 </div>
-                <div id="slot-list" class="grid grid-cols-2 gap-2"></div>
-                <div id="custom-lesson" class="hidden space-y-2">
-                    <input id="custom-label" type="text" placeholder="Название, например: 8 урок" class="input-dark">
-                    <input id="custom-time" type="text" placeholder="Время, например: 15.25-16.10" class="input-dark">
+                <div id="slot-list" class="mini-grid"></div>
+                <div id="custom-lesson" class="hidden stack-sm">
+                    <input id="custom-label" type="text" placeholder="Название, например: 8 урок" class="input input-sm">
+                    <input id="custom-time" type="text" placeholder="Время, например: 15.25-16.10" class="input input-sm">
                 </div>
-                <input id="new-subject" list="subject-options" type="text" placeholder="Предмет" class="input-dark">
+                <input id="new-subject" list="subject-options" type="text" placeholder="Предмет" class="input input-sm">
                 <datalist id="subject-options"></datalist>
-                <button type="button" onclick="confirmAddLesson()" class="w-full btn-chocolate text-white text-xs py-2 rounded-lg font-medium transition shadow">Добавить в расписание</button>
+                <button type="button" class="btn btn-block btn-sm" onclick="confirmAddLesson()">Добавить в расписание</button>
             </div>
 
-            <div class="flex gap-2 pt-2">
-                <button onclick="closeEditModal()" class="flex-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs py-2.5 rounded-xl font-medium transition">Отмена</button>
-                <button onclick="saveDaySchedule()" class="flex-1 btn-chocolate text-white text-xs py-2.5 rounded-xl font-medium transition shadow">Сохранить</button>
+            <div class="row2" style="margin-top:6px">
+                <button class="btn btn-ghost btn-block" onclick="closeEditModal()">Отмена</button>
+                <button class="btn btn-block" onclick="saveDaySchedule()">Сохранить</button>
             </div>
         </div>
     </div>
 
     <script>
         const tg = window.Telegram.WebApp;
+        tg.ready();
         tg.expand();
 
         const authToken = new URLSearchParams(window.location.search).get('t') || '';
 
         let appData = null;
+        let activeTab = 'schedule';
         let activeWeekType = 'current';
         let editingDay = null;
         let currentEditingLessons = [];
         let addState = { kind: 'pair', slot: 0 };
         let hw = { subject: null, date: null, view: null };
+        let scrolledToToday = false;
+        let lastTilt = null;
 
         const PAIR_SLOTS = [
             { label: '1 пара', time: '08.30-10.10' },
@@ -508,130 +955,329 @@ HTML_TEMPLATE = r"""
             return h;
         }
 
-        window.addEventListener('DOMContentLoaded', () => {
-            document.getElementById('subject-list').addEventListener('click', e => {
-                const btn = e.target.closest('button[data-subject]');
-                if (btn) chooseSubject(btn.dataset.subject);
-            });
-            document.getElementById('slot-list').addEventListener('click', e => {
-                const btn = e.target.closest('button[data-slot]');
-                if (btn) {
-                    addState.slot = Number(btn.dataset.slot);
-                    renderAddPanel();
+        // --- Тактильный отклик Telegram ---
+        function haptic(kind) {
+            try {
+                const h = tg.HapticFeedback;
+                if (!h) return;
+                if (kind === 'success' || kind === 'error' || kind === 'warning') {
+                    h.notificationOccurred(kind);
+                } else if (kind === 'selection') {
+                    h.selectionChanged();
+                } else {
+                    h.impactOccurred(kind || 'light');
                 }
+            } catch (e) { /* клиент без поддержки вибрации */ }
+        }
+
+        // --- Шторки ---
+        function openSheet(id) {
+            document.getElementById(id).classList.add('open');
+            document.getElementById('bd').classList.add('open');
+            document.body.classList.add('sheet-open');
+        }
+        function closeSheet(id) {
+            document.getElementById(id).classList.remove('open');
+            if (!document.querySelector('.sheet.open')) {
+                document.getElementById('bd').classList.remove('open');
+                document.body.classList.remove('sheet-open');
+            }
+        }
+        function closeAllSheets() {
+            document.querySelectorAll('.sheet.open').forEach(s => s.classList.remove('open'));
+            document.getElementById('bd').classList.remove('open');
+            document.body.classList.remove('sheet-open');
+            editingDay = null;
+        }
+
+        // --- Сегмент-контрол: индикатор переезжает на нужную кнопку ---
+        function moveInd(segId) {
+            const seg = document.getElementById(segId);
+            if (!seg) return;
+            const on = seg.querySelector('button.on');
+            const ind = seg.querySelector('.seg-ind');
+            if (!on || !ind || !on.offsetWidth) return;
+            ind.style.width = on.offsetWidth + 'px';
+            ind.style.transform = `translateX(${on.offsetLeft}px)`;
+        }
+
+        function setOn(segId, attr, value) {
+            document.querySelectorAll(`#${segId} button`).forEach(b => {
+                b.classList.toggle('on', b.dataset[attr] === value);
             });
-            document.getElementById('hw-calendar').addEventListener('click', e => {
-                const nav = e.target.closest('[data-nav]');
-                if (nav) {
-                    if (!nav.disabled) shiftMonth(Number(nav.dataset.nav));
-                    return;
+            moveInd(segId);
+        }
+
+        function animateIn(el) {
+            el.classList.remove('enter');
+            void el.offsetWidth;
+            el.classList.add('enter');
+        }
+
+        // --- Переключение вкладок ---
+        function switchTab(tab) {
+            if (tab === activeTab) return;
+            activeTab = tab;
+            setOn('seg-main', 'tab', tab);
+            const sch = document.getElementById('tab-schedule');
+            const hwTab = document.getElementById('tab-homework');
+            sch.classList.toggle('hidden', tab !== 'schedule');
+            hwTab.classList.toggle('hidden', tab !== 'homework');
+            animateIn(tab === 'schedule' ? sch : hwTab);
+            if (tab === 'schedule') moveInd('seg-week');
+            haptic('light');
+        }
+
+        // --- Смена недели ---
+        function setWeek(type) {
+            if (type === activeWeekType) return;
+            activeWeekType = type;
+            setOn('seg-week', 'week', type);
+            renderSchedule(true);
+            haptic('light');
+        }
+
+        // --- Свайпы для смены недель ---
+        function initSwipe() {
+            const el = document.getElementById('tab-schedule');
+            let sx = 0, sy = 0, active = false;
+            el.addEventListener('touchstart', e => {
+                if (document.querySelector('.sheet.open')) return;
+                sx = e.touches[0].clientX;
+                sy = e.touches[0].clientY;
+                active = true;
+            }, { passive: true });
+            el.addEventListener('touchend', e => {
+                if (!active) return;
+                active = false;
+                const t = e.changedTouches[0];
+                const dx = t.clientX - sx;
+                const dy = t.clientY - sy;
+                if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+                    if (dx < 0) setWeek('next');
+                    else setWeek('current');
                 }
-                const day = e.target.closest('[data-iso]');
-                if (day && !day.disabled) {
-                    hw.date = day.dataset.iso;
-                    renderCalendar();
-                }
-            });
-            loadData();
-        });
+            }, { passive: true });
+        }
+
+        // --- 3D-наклон карточек при касании ---
+        function initTilt() {
+            const reset = el => {
+                if (!el) return;
+                el.style.transform = '';
+                el.classList.remove('active');
+            };
+            document.addEventListener('pointermove', e => {
+                const el = e.target.closest && e.target.closest('.tilt');
+                if (lastTilt && lastTilt !== el) reset(lastTilt);
+                if (!el) { lastTilt = null; return; }
+                lastTilt = el;
+                const r = el.getBoundingClientRect();
+                const x = (e.clientX - r.left) / r.width;
+                const y = (e.clientY - r.top) / r.height;
+                const rx = (0.5 - y) * 7;
+                const ry = (x - 0.5) * 9;
+                el.style.transform = `perspective(900px) rotateX(${rx}deg) rotateY(${ry}deg) scale(1.01)`;
+                el.style.setProperty('--mx', (x * 100) + '%');
+                el.style.setProperty('--my', (y * 100) + '%');
+                el.classList.add('active');
+            }, { passive: true });
+            document.addEventListener('pointerleave', e => {
+                if (e.target && e.target.classList && e.target.classList.contains('tilt')) reset(e.target);
+            }, true);
+            document.addEventListener('pointerup', () => { if (lastTilt) { reset(lastTilt); lastTilt = null; } });
+            document.addEventListener('pointercancel', () => { if (lastTilt) { reset(lastTilt); lastTilt = null; } });
+        }
+
+        // --- Параллакс амбиент-фона при скролле ---
+        function initParallax() {
+            const mesh = document.getElementById('mesh');
+            let raf = null;
+            window.addEventListener('scroll', () => {
+                if (raf) return;
+                raf = requestAnimationFrame(() => {
+                    const y = window.scrollY || 0;
+                    mesh.style.transform = `translate3d(0, ${-y * 0.12}px, 0)`;
+                    raf = null;
+                });
+            }, { passive: true });
+        }
+
+        // --- Тактильный отклик на все кнопки ---
+        function initHaptics() {
+            document.addEventListener('click', e => {
+                const b = e.target.closest && e.target.closest('button');
+                if (b) haptic('light');
+            }, true);
+        }
+
+        // --- Приветствие ---
+        function renderGreeting() {
+            const u = (tg.initDataUnsafe && tg.initDataUnsafe.user) || {};
+            const name = u.first_name || '';
+            const h = new Date().getHours();
+            let g = 'Добрый вечер';
+            if (h < 5) g = 'Доброй ночи';
+            else if (h < 12) g = 'Доброе утро';
+            else if (h < 18) g = 'Добрый день';
+            document.getElementById('greeting').textContent = name ? `${g}, ${name} 👋` : `${g} 👋`;
+        }
+
+        // --- Виджет каникул ---
+        // Зимние: 19 января (старт) - 1 февраля, выход 2 февраля.
+        // Летние: 1 июля - 31 августа.
+        // Логика по календарю дат:
+        //  1 янв - 18 янв: до зимних каникул (19 января)
+        //  19 янв - 1 фев: зимние каникулы, показываем до выхода (2 февраля)
+        //  2 фев - 30 июн: до летних каникул (1 июля)
+        //  1 июл - 31 авг: летние каникулы, плашка скрыта
+        //  1 сен - 30 ноя: плашка скрыта
+        //  1 дек - 31 дек: до зимних каникул (19 января следующего года)
+        function plural(n, one, few, many) {
+            const a = Math.abs(n) % 100;
+            const b = a % 10;
+            if (a > 10 && a < 20) return many;
+            if (b > 1 && b < 5) return few;
+            if (b === 1) return one;
+            return many;
+        }
+        function dayWord(n) { return plural(n, 'день', 'дня', 'дней'); }
+
+        function renderCountdown() {
+            const el = document.getElementById('countdown');
+            if (!appData || !appData.today_date) { el.classList.add('hidden'); return; }
+            const p = parseIso(appData.today_date);
+            const today = new Date(p.y, p.m, p.d);
+            const y = p.y;
+            const diff = (to) => Math.round((to - today) / 86400000);
+            const mkDate = (yy, mm, dd) => new Date(yy, mm, dd);
+
+            const mo = p.m; // 0-11
+            const d = p.d;
+            let num = null, title = '', sub = '';
+
+            if (mo === 0 && d <= 18) {
+                num = diff(mkDate(y, 0, 19));
+                title = 'До зимних каникул';
+                sub = 'Старт 19 января';
+            } else if ((mo === 0 && d >= 19) || (mo === 1 && d <= 1)) {
+                num = diff(mkDate(y, 1, 2));
+                title = 'Зимние каникулы';
+                sub = 'До учёбы 2 февраля';
+            } else if ((mo === 1 && d >= 2) || (mo >= 2 && mo <= 4) || (mo === 5)) {
+                num = diff(mkDate(y, 6, 1));
+                title = 'До летних каникул';
+                sub = 'Старт 1 июля';
+            } else if (mo === 11) {
+                num = diff(mkDate(y + 1, 0, 19));
+                title = 'До зимних каникул';
+                sub = 'Старт 19 января';
+            } else {
+                el.classList.add('hidden');
+                return;
+            }
+
+            const isVacation = title === 'Зимние каникулы';
+            const value = isVacation ? diff(mkDate(y, 1, 2)) : num;
+            el.innerHTML = `
+                <div class="cd-num">${value}</div>
+                <div class="cd-txt"><b>${title}</b>${sub} · ${dayWord(value)}</div>
+            `;
+            el.classList.remove('hidden');
+        }
+
+        // --- Скелетоны ---
+        function skeletons(n) {
+            return Array.from({ length: n }, () => '<div class="skel"></div>').join('');
+        }
 
         function loadData() {
-            fetch('/api/data', { headers: authHeaders(false) })
-            .then(res => res.json())
-            .then(data => {
-                appData = data;
-                if (data.is_admin) {
-                    document.getElementById('admin-badge').classList.remove('hidden');
-                }
-                renderSchedule();
-                renderHomework();
-            });
+            if (!appData) {
+                document.getElementById('schedule-container').innerHTML = skeletons(3);
+                document.getElementById('homework-container').innerHTML = skeletons(2);
+            }
+            return fetch('/api/data', { headers: authHeaders(false) })
+                .then(res => res.json())
+                .then(data => {
+                    const first = appData === null;
+                    appData = data;
+                    if (data.is_admin) {
+                        document.getElementById('admin-badge').classList.remove('hidden');
+                        document.getElementById('btn-del-hw').classList.remove('hidden');
+                    }
+                    renderGreeting();
+                    renderCountdown();
+                    renderSchedule(first);
+                    renderHomework(first);
+                    if (first) requestAnimationFrame(() => { moveInd('seg-main'); moveInd('seg-week'); });
+                })
+                .catch(() => {
+                    document.getElementById('schedule-container').innerHTML =
+                        '<div class="toast-empty">Нет связи с сервером. Закройте и откройте приложение снова.</div>';
+                });
         }
 
-        function switchTab(tab) {
-            ['schedule', 'homework'].forEach(t => {
-                document.getElementById(`tab-${t}`).classList.add('hidden');
-                document.getElementById(`btn-${t}`).className = "flex-1 py-2 text-sm font-medium rounded-lg text-zinc-400 transition";
-            });
-            document.getElementById(`tab-${tab}`).classList.remove('hidden');
-            document.getElementById(`btn-${tab}`).className = "flex-1 py-2 text-sm font-medium rounded-lg btn-chocolate text-white transition";
-        }
-
-        function setWeek(type) {
-            activeWeekType = type;
-            document.getElementById('week-btn-current').className = type === 'current' ? "flex-1 py-1.5 text-xs font-medium rounded btn-chocolate text-white shadow" : "flex-1 py-1.5 text-xs font-medium rounded text-zinc-400";
-            document.getElementById('week-btn-next').className = type === 'next' ? "flex-1 py-1.5 text-xs font-medium rounded btn-chocolate text-white shadow" : "flex-1 py-1.5 text-xs font-medium rounded text-zinc-400";
-            renderSchedule();
-        }
-
-        function renderSchedule() {
+        // --- РАСПИСАНИЕ ---
+        function renderSchedule(animate) {
             if (!appData) return;
             const container = document.getElementById('schedule-container');
             const schedule = activeWeekType === 'current' ? appData.current_week : appData.next_week;
 
-            container.innerHTML = schedule.map(day => {
+            container.innerHTML = schedule.map((day, i) => {
                 const isToday = day.full_date === appData.today_date;
-                const cardClass = isToday
-                    ? 'bg-custom-card p-3.5 rounded-xl relative pb-11'
-                    : 'bg-custom-card p-3.5 rounded-xl relative pb-11 card-violet';
-                const cardStyle = isToday
-                    ? 'border:2px solid #39ff14;box-shadow:0 0 14px rgba(57,255,20,0.75)'
-                    : '';
-                const todayTag = isToday
-                    ? '<span class="text-[10px] font-bold text-[#39ff14]">СЕГОДНЯ</span>'
-                    : '';
+                const delay = animate ? `animation-delay:${i * 45}ms` : '';
+                const todayTag = isToday ? '<span class="today-tag">СЕГОДНЯ</span>' : '';
+                const lessons = day.lessons.length
+                    ? day.lessons.map(l => {
+                        const m = l.match(/^(.*?)\s*\(([^)]*)\)\s*:\s*(.*)$/);
+                        if (m) {
+                            return `<div class="lrow"><span class="ltime">${esc(m[2])}</span><span class="lsub">${esc(m[3])}</span></div>`;
+                        }
+                        return `<div class="lrow"><span class="lsub">${esc(l)}</span></div>`;
+                    }).join('')
+                    : '<div class="empty">Пар нет</div>';
 
                 return `
-                <div class="${cardClass}" style="${cardStyle}">
-                    <div class="flex justify-between items-center mb-2">
-                        <span class="font-semibold text-zinc-200 text-sm">${esc(day.day)}</span>
-                        <span class="flex items-center gap-1.5">${todayTag}<span class="tag-outline text-[11px] px-2 py-0.5">${esc(day.date)}</span></span>
+                <div class="glass card tilt ${isToday ? 'today' : ''} ${animate ? 'enter' : ''}" style="${delay}">
+                    <div class="shine"></div>
+                    <div class="dhead">
+                        <span class="dname">${esc(day.day)}</span>
+                        <span style="display:flex;align-items:center">${todayTag}<span class="tag">${esc(day.date)}</span></span>
                     </div>
-                    <ul class="space-y-1 text-xs text-zinc-300 mb-2">
-                        ${day.lessons.length > 0 ? day.lessons.map(l => `<li class="py-0.5">• ${esc(l)}</li>`).join('') : '<li class="text-zinc-500 italic">Пар нет 🎉</li>'}
-                    </ul>
-                    <div class="absolute bottom-2.5 left-3 right-3 flex justify-between items-center pt-2 border-t border-custom-border/50">
-                        <button onclick="openDayHwModal('${esc(day.full_date)}', '${esc(day.day)}', '${esc(day.date)}')" class="btn-chocolate text-white px-2.5 py-1 rounded-lg text-[11px] font-medium transition flex items-center gap-1 shadow">
-                            📖 Просмотреть ДЗ
-                        </button>
-                        ${appData.is_admin ? `
-                            <button onclick="openEditModal('${esc(day.day)}')" class="btn-chocolate text-white px-2.5 py-1 rounded-lg text-[11px] font-medium transition flex items-center gap-1 shadow">
-                                ✏️ Изменить
-                            </button>
-                        ` : ''}
+                    ${lessons}
+                    <div class="dact">
+                        <button class="btn btn-sm" onclick="openDayHwModal('${esc(day.full_date)}', '${esc(day.day)}', '${esc(day.date)}')">Домашка</button>
+                        ${appData.is_admin ? `<button class="btn btn-ghost btn-sm" onclick="openEditModal('${esc(day.day)}')">Изменить</button>` : ''}
                     </div>
-                </div>
-                `;
+                </div>`;
             }).join('');
+
+            // Автопрокрутка к сегодняшнему дню: только один раз, при открытии
+            if (!scrolledToToday && activeWeekType === 'current' && activeTab === 'schedule') {
+                scrolledToToday = true;
+                const el = container.querySelector('.card.today');
+                if (el) setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), 500);
+            }
         }
 
         function openDayHwModal(fullDateStr, dayName, shortDateStr) {
-            const modalTitle = document.getElementById('day-hw-modal-title');
+            document.getElementById('day-hw-modal-title').innerText = `ДЗ · ${dayName} ${shortDateStr}`;
+            const list = appData.homework.filter(h => h.date_key === fullDateStr);
             const container = document.getElementById('day-hw-container');
-
-            modalTitle.innerText = `ДЗ на ${dayName} (${shortDateStr})`;
-            const filteredHw = appData.homework.filter(h => h.date_key === fullDateStr);
-
-            if (filteredHw.length === 0) {
-                container.innerHTML = '<p class="text-xs text-zinc-500 italic text-center py-4">На этот день домашних заданий нет ✨</p>';
-            } else {
-                container.innerHTML = filteredHw.map(h => `
-                    <div class="bg-custom-dark p-3 rounded-xl border border-custom-border space-y-1">
-                        <div class="flex justify-between items-center">
-                            <span class="font-semibold text-zinc-200 text-xs">${esc(h.subject)}</span>
-                            <span class="text-[10px] text-zinc-500">${esc(h.author)}</span>
+            container.innerHTML = list.length
+                ? list.map(h => `
+                    <div class="glass hw-item">
+                        <div class="dhead" style="margin-bottom:0">
+                            <span class="hw-subj">${esc(h.subject)}</span>
+                            <span class="muted small">${esc(h.author)}</span>
                         </div>
-                        <p class="text-xs text-zinc-300 whitespace-pre-wrap">${esc(h.task)}</p>
-                    </div>
-                `).join('');
-            }
-
-            document.getElementById('day-hw-modal').classList.remove('hidden');
+                        <div class="hw-task">${esc(h.task)}</div>
+                    </div>`).join('')
+                : '<div class="empty" style="text-align:center;padding:24px 0">На этот день домашних заданий нет ✨</div>';
+            openSheet('day-sheet');
         }
 
-        function closeDayHwModal() {
-            document.getElementById('day-hw-modal').classList.add('hidden');
-        }
+        function closeDayHwModal() { closeSheet('day-sheet'); }
 
         // --- РЕДАКТОР РАСПИСАНИЯ ---
         function openEditModal(dayName) {
@@ -640,17 +1286,17 @@ HTML_TEMPLATE = r"""
             const dayObj = schedule.find(d => d.day === dayName);
             currentEditingLessons = dayObj ? dayObj.lessons.map(parseLesson) : [];
 
-            document.getElementById('modal-title').innerText = `${dayName} (${activeWeekType === 'current' ? 'Текущая' : 'Следующая'})`;
+            document.getElementById('modal-title').innerText = `${dayName} · ${activeWeekType === 'current' ? 'Текущая' : 'Следующая'}`;
             document.getElementById('subject-options').innerHTML =
                 (appData.subjects || []).map(s => `<option value="${esc(s)}"></option>`).join('');
 
             closeAddPanel();
             renderModalLessons();
-            document.getElementById('edit-modal').classList.remove('hidden');
+            openSheet('edit-sheet');
         }
 
         function closeEditModal() {
-            document.getElementById('edit-modal').classList.add('hidden');
+            closeSheet('edit-sheet');
             editingDay = null;
         }
 
@@ -665,16 +1311,16 @@ HTML_TEMPLATE = r"""
         function renderModalLessons() {
             const container = document.getElementById('modal-lessons-container');
             if (currentEditingLessons.length === 0) {
-                container.innerHTML = '<p class="text-xs text-zinc-500 italic text-center py-4">Пар нет</p>';
+                container.innerHTML = '<div class="empty" style="text-align:center;padding:14px 0">Пар нет</div>';
                 return;
             }
             container.innerHTML = currentEditingLessons.map((l, i) => `
-                <div class="lesson-card flex items-center gap-2">
-                    <div class="flex-1">
-                        <div class="text-[10px] text-zinc-500">${esc(l.label)}${l.time ? ' (' + esc(l.time) + ')' : ''}</div>
-                        <input type="text" data-index="${i}" value="${esc(l.subject)}" class="input-dark">
+                <div class="lesson-row">
+                    <div style="flex:1;min-width:0">
+                        <div class="lbl">${esc(l.label)}${l.time ? ' · ' + esc(l.time) : ''}</div>
+                        <input type="text" data-index="${i}" value="${esc(l.subject)}" class="input input-sm" style="margin-top:6px">
                     </div>
-                    <button type="button" onclick="removeLesson(${i})" class="bg-red-950/40 hover:bg-red-900/60 text-red-300 border border-red-900/50 p-2 rounded-lg text-xs transition" title="Удалить">🗑</button>
+                    <button type="button" class="del-row" onclick="removeLesson(${i})" title="Удалить">✕</button>
                 </div>
             `).join('');
         }
@@ -687,9 +1333,9 @@ HTML_TEMPLATE = r"""
 
         function toggleAddPanel() {
             const panel = document.getElementById('add-panel');
-            if (panel.classList.contains('hidden')) {
+            if (!panel.classList.contains('open')) {
                 addState = { kind: 'pair', slot: 0 };
-                panel.classList.remove('hidden');
+                panel.classList.add('open');
                 renderAddPanel();
             } else {
                 closeAddPanel();
@@ -697,7 +1343,7 @@ HTML_TEMPLATE = r"""
         }
 
         function closeAddPanel() {
-            document.getElementById('add-panel').classList.add('hidden');
+            document.getElementById('add-panel').classList.remove('open');
         }
 
         function setLessonKind(kind) {
@@ -706,18 +1352,25 @@ HTML_TEMPLATE = r"""
         }
 
         function renderAddPanel() {
-            document.getElementById('kind-pair').classList.toggle('active', addState.kind === 'pair');
-            document.getElementById('kind-lesson').classList.toggle('active', addState.kind === 'lesson');
+            document.getElementById('kind-pair').classList.toggle('on', addState.kind === 'pair');
+            document.getElementById('kind-lesson').classList.toggle('on', addState.kind === 'lesson');
+            document.getElementById('kind-pair').classList.toggle('slot-on', addState.kind === 'pair');
+            document.getElementById('kind-lesson').classList.toggle('slot-on', addState.kind === 'lesson');
 
             const slots = addState.kind === 'pair' ? PAIR_SLOTS : LESSON_SLOTS;
             document.getElementById('slot-list').innerHTML = slots.map((s, i) => `
-                <button type="button" data-slot="${i}" class="seg-btn ${i === addState.slot ? 'active' : ''}">
-                    ${esc(s.label)}${s.time ? '<br><span class="text-[10px] opacity-80">' + esc(s.time) + '</span>' : ''}
+                <button type="button" data-slot="${i}" class="slot ${i === addState.slot ? 'on' : ''}" onclick="pickSlot(${i})">
+                    ${esc(s.label)}${s.time ? '<small>' + esc(s.time) + '</small>' : ''}
                 </button>
             `).join('');
 
             const current = slots[addState.slot];
             document.getElementById('custom-lesson').classList.toggle('hidden', !(current && current.custom));
+        }
+
+        function pickSlot(i) {
+            addState.slot = i;
+            renderAddPanel();
         }
 
         function confirmAddLesson() {
@@ -731,6 +1384,7 @@ HTML_TEMPLATE = r"""
                 label = document.getElementById('custom-label').value.trim();
                 time = document.getElementById('custom-time').value.trim();
                 if (!label) {
+                    haptic('warning');
                     alert('Введите название урока, например: 8 урок');
                     return;
                 }
@@ -738,6 +1392,7 @@ HTML_TEMPLATE = r"""
 
             const subject = document.getElementById('new-subject').value.trim();
             if (!subject) {
+                haptic('warning');
                 alert('Введите название предмета');
                 return;
             }
@@ -773,16 +1428,18 @@ HTML_TEMPLATE = r"""
                 })
             }).then(res => res.json()).then(data => {
                 if (data.status === 'success') {
+                    haptic('success');
                     closeEditModal();
                     loadData();
                 } else {
+                    haptic('error');
                     alert('Ошибка: ' + (data.message || 'Не удалось сохранить'));
                 }
             });
         }
 
         // --- ДОМАШКА: СПИСОК ---
-        function renderHomework() {
+        function renderHomework(animate) {
             if (!appData) return;
             const container = document.getElementById('homework-container');
             const today = appData.today_date;
@@ -796,19 +1453,57 @@ HTML_TEMPLATE = r"""
             const list = [...upcoming, ...past];
 
             if (list.length === 0) {
-                container.innerHTML = '<div class="text-center py-6 text-zinc-500 text-sm">Домашки пока нет ✨</div>';
+                container.innerHTML = '<div class="toast-empty">Домашки пока нет ✨</div>';
                 return;
             }
-            container.innerHTML = list.map(h => `
-                <div class="bg-custom-card p-3.5 rounded-xl border border-custom-border space-y-1 shadow-md">
-                    <div class="flex justify-between items-center">
-                        <span class="font-semibold text-zinc-200 text-sm">${esc(h.subject)}</span>
-                        <span class="tag-outline text-[11px] px-2 py-0.5">${esc(h.date_key)}</span>
+            container.innerHTML = list.map((h, i) => `
+                <div class="glass card hw-item tilt ${animate ? 'enter' : ''}" style="${animate ? `animation-delay:${i * 40}ms` : ''}">
+                    <div class="shine"></div>
+                    <div class="dhead" style="margin-bottom:0">
+                        <span class="hw-subj">${esc(h.subject)}</span>
+                        <span class="tag">${esc(h.date_key)}</span>
                     </div>
-                    <p class="text-xs text-zinc-300 whitespace-pre-wrap">${esc(h.task)}</p>
-                    <div class="text-[10px] text-zinc-500 text-right">Автор: ${esc(h.author)}</div>
+                    <div class="hw-task">${esc(h.task)}</div>
+                    <div class="hw-author">${esc(h.author)}</div>
                 </div>
             `).join('');
+        }
+
+        // --- ДОМАШКА: УДАЛЕНИЕ (только админы) ---
+        function openDeleteHwModal() {
+            if (!appData) return;
+            const list = document.getElementById('del-hw-list');
+            list.innerHTML = appData.homework.length
+                ? appData.homework.map(h => `
+                    <div class="lesson-row">
+                        <div style="flex:1;min-width:0">
+                            <div style="font-size:14px;font-weight:700">${esc(h.subject)} <span class="muted small">· ${esc(h.date_key)}</span></div>
+                            <div class="muted small" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(h.task)}</div>
+                        </div>
+                        <button type="button" data-del="${h.id}" class="btn btn-danger btn-sm">Удалить</button>
+                    </div>
+                `).join('')
+                : '<div class="empty" style="text-align:center;padding:20px 0">Домашки пока нет</div>';
+            openSheet('del-sheet');
+        }
+
+        function closeDeleteHwModal() { closeSheet('del-sheet'); }
+
+        function deleteHomework(id) {
+            if (!confirm('Удалить это ДЗ?')) return;
+            fetch('/api/homework/delete', {
+                method: 'POST',
+                headers: authHeaders(true),
+                body: JSON.stringify({ id })
+            }).then(res => res.json()).then(data => {
+                if (data.status === 'success') {
+                    haptic('success');
+                    loadData().then(openDeleteHwModal);
+                } else {
+                    haptic('error');
+                    alert('Ошибка: ' + (data.message || 'Не удалось удалить'));
+                }
+            });
         }
 
         // --- ДОМАШКА: ПОШАГОВАЯ ЗАПИСЬ ---
@@ -816,12 +1511,10 @@ HTML_TEMPLATE = r"""
             if (!appData) return;
             hw = { subject: null, date: null, view: null };
             showHwStage1();
-            document.getElementById('hw-modal').classList.remove('hidden');
+            openSheet('hw-sheet');
         }
 
-        function closeHwWizard() {
-            document.getElementById('hw-modal').classList.add('hidden');
-        }
+        function closeHwWizard() { closeSheet('hw-sheet'); }
 
         function showHwStage1() {
             document.getElementById('hw-title').textContent = 'Выберите предмет';
@@ -831,8 +1524,8 @@ HTML_TEMPLATE = r"""
 
             const subjects = appData.subjects || [];
             document.getElementById('subject-list').innerHTML = subjects.length
-                ? subjects.map(s => `<button type="button" data-subject="${esc(s)}" class="subject-btn">${esc(s)}</button>`).join('')
-                : '<p class="col-span-2 text-xs text-zinc-500 text-center py-4">Предметов пока нет</p>';
+                ? subjects.map(s => `<button type="button" data-subject="${esc(s)}" class="subj">${esc(s)}</button>`).join('')
+                : '<div class="muted" style="grid-column:1/-1;text-align:center;padding:20px 0">Предметов пока нет</div>';
         }
 
         function chooseSubject(name) {
@@ -882,12 +1575,12 @@ HTML_TEMPLATE = r"""
             }
 
             document.getElementById('hw-calendar').innerHTML = `
-                <div class="flex items-center justify-between mb-2">
+                <div class="cal-head">
                     <button type="button" data-nav="-1" class="cal-nav" ${prevAllowed ? '' : 'disabled'}>‹</button>
-                    <div class="text-sm font-semibold text-zinc-100">${MONTHS[m]} ${y}</div>
+                    <div class="cal-month">${MONTHS[m]} ${y}</div>
                     <button type="button" data-nav="1" class="cal-nav">›</button>
                 </div>
-                <div class="cal-grid mb-1">${WD_SHORT.map(w => `<span class="cal-wd">${w}</span>`).join('')}</div>
+                <div class="cal-grid" style="margin-bottom:4px">${WD_SHORT.map(w => `<span class="cal-wd">${w}</span>`).join('')}</div>
                 <div class="cal-grid">${cells}</div>
             `;
 
@@ -907,14 +1600,17 @@ HTML_TEMPLATE = r"""
             const task = document.getElementById('hw-task').value.trim();
 
             if (!hw.subject) {
+                haptic('warning');
                 alert('Выберите предмет');
                 return;
             }
             if (!hw.date || hw.date < appData.today_date) {
+                haptic('warning');
                 alert('Нельзя записать ДЗ на прошедший день');
                 return;
             }
             if (!task) {
+                haptic('warning');
                 alert('Напишите, что задали');
                 return;
             }
@@ -925,14 +1621,52 @@ HTML_TEMPLATE = r"""
                 body: JSON.stringify({ date_key: hw.date, subject: hw.subject, task })
             }).then(res => res.json()).then(data => {
                 if (data.status === 'success') {
+                    haptic('success');
                     document.getElementById('hw-task').value = '';
                     closeHwWizard();
                     loadData();
                 } else {
+                    haptic('error');
                     alert('Ошибка: ' + (data.message || 'Не удалось сохранить'));
                 }
             });
         }
+
+        // --- Делегирование событий ---
+        window.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('subject-list').addEventListener('click', e => {
+                const btn = e.target.closest('button[data-subject]');
+                if (btn) chooseSubject(btn.dataset.subject);
+            });
+            document.getElementById('del-hw-list').addEventListener('click', e => {
+                const btn = e.target.closest('button[data-del]');
+                if (btn) deleteHomework(Number(btn.dataset.del));
+            });
+            document.getElementById('hw-calendar').addEventListener('click', e => {
+                const nav = e.target.closest('[data-nav]');
+                if (nav) {
+                    if (!nav.disabled) shiftMonth(Number(nav.dataset.nav));
+                    return;
+                }
+                const day = e.target.closest('[data-iso]');
+                if (day && !day.disabled) {
+                    haptic('selection');
+                    hw.date = day.dataset.iso;
+                    renderCalendar();
+                }
+            });
+
+            initSwipe();
+            initTilt();
+            initParallax();
+            initHaptics();
+            window.addEventListener('resize', () => {
+                moveInd('seg-main');
+                moveInd('seg-week');
+            });
+            loadData();
+            setInterval(renderCountdown, 60 * 60 * 1000);
+        });
     </script>
 </body>
 </html>
@@ -1112,6 +1846,22 @@ def schedule_anchor(now):
     return now.date()
 
 
+def purge_old_homework():
+    """Удаляет ДЗ, дата которых уже прошла (то есть наступил новый день)."""
+    today_iso = get_now().date().isoformat()
+    with db_lock, get_db() as conn:
+        conn.execute("DELETE FROM homework WHERE date_key < ?", (today_iso,))
+
+
+def homework_cleaner():
+    while True:
+        try:
+            purge_old_homework()
+        except Exception as e:
+            log.error("Ошибка очистки ДЗ: %s", e)
+        time.sleep(HOMEWORK_CLEAN_INTERVAL)
+
+
 SUBJECT_RE = re.compile(r":\s*(.+)$")
 PLACEHOLDER_SUBJECT = "Новый предмет"
 
@@ -1183,6 +1933,8 @@ def get_day_schedule_for_date(target_date):
 def get_api_data():
     user_id, _, _ = get_request_user()
     is_admin = user_id in ADMINS if user_id else False
+
+    purge_old_homework()
 
     now = get_now()
     today = now.date()
@@ -1275,6 +2027,26 @@ def add_homework():
             "INSERT INTO homework (date_key, subject, task, author) VALUES (?, ?, ?, ?)",
             (parsed_date.isoformat(), subject, task, author),
         )
+    return jsonify({"status": "success"})
+
+
+@app.route("/api/homework/delete", methods=["POST"])
+def delete_homework():
+    user_id, _, _ = get_request_user()
+    if user_id not in ADMINS:
+        return jsonify({"status": "error", "message": "Нет прав админа"}), 403
+
+    data = request.get_json(silent=True) or {}
+    hw_id = data.get("id")
+    if not isinstance(hw_id, int) or isinstance(hw_id, bool):
+        return jsonify({"status": "error", "message": "Неверный идентификатор"}), 400
+
+    with db_lock, get_db() as conn:
+        cur = conn.execute("DELETE FROM homework WHERE id = ?", (hw_id,))
+        deleted = cur.rowcount
+
+    if not deleted:
+        return jsonify({"status": "error", "message": "ДЗ не найдено"}), 404
     return jsonify({"status": "success"})
 
 
@@ -1443,7 +2215,13 @@ if __name__ == "__main__":
                 )
                 time.sleep(10)
 
+    try:
+        purge_old_homework()
+    except Exception as e:
+        log.error("Первичная очистка ДЗ не удалась: %s", e)
+
     Thread(target=run_bot, daemon=True).start()
+    Thread(target=homework_cleaner, daemon=True).start()
     log.info("Telegram бот запущен в фоне.")
 
     port = int(os.environ.get("PORT", 5000))
