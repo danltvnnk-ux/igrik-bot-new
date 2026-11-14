@@ -771,6 +771,7 @@ HTML_TEMPLATE = r"""
             <span class="seg-ind"></span>
             <button class="on" data-tab="schedule" onclick="switchTab('schedule')">Расписание</button>
             <button data-tab="homework" onclick="switchTab('homework')">Домашка</button>
+            <button data-tab="news" onclick="switchTab('news')">Объявления</button>
         </div>
 
         <section id="tab-schedule">
@@ -791,6 +792,14 @@ HTML_TEMPLATE = r"""
                 </div>
             </div>
             <div id="homework-container" class="stack" style="margin-top:14px"></div>
+        </section>
+
+        <section id="tab-news" class="hidden">
+            <div class="glass card">
+                <div class="sec-title">Объявления</div>
+                <button id="news-admin-btn" class="btn btn-block hidden" onclick="openNewsComposer()">Написать объявление</button>
+            </div>
+            <div id="news-container" class="stack" style="margin-top:14px"></div>
         </section>
     </div>
 
@@ -816,6 +825,19 @@ HTML_TEMPLATE = r"""
             <div id="hw-date-hint" class="muted small"></div>
             <textarea id="hw-task" class="input" rows="3" maxlength="2000" placeholder="Что задали..."></textarea>
             <button class="btn btn-block" onclick="submitHomework()">Опубликовать</button>
+        </div>
+    </div>
+
+    <!-- Шторка: новое объявление (админ) -->
+    <div id="news-sheet" class="sheet glass">
+        <div class="handle"></div>
+        <div class="sh-title">
+            <span>Объявление</span>
+            <button class="sh-close" onclick="closeNewsComposer()">✕</button>
+        </div>
+        <div class="stack-sm">
+            <textarea id="news-text" class="input" rows="5" maxlength="1000" placeholder="Текст объявления"></textarea>
+            <button class="btn btn-block" onclick="publishNews()">Опубликовать</button>
         </div>
     </div>
 
@@ -1019,11 +1041,11 @@ HTML_TEMPLATE = r"""
             if (tab === activeTab) return;
             activeTab = tab;
             setOn('seg-main', 'tab', tab);
-            const sch = document.getElementById('tab-schedule');
-            const hwTab = document.getElementById('tab-homework');
-            sch.classList.toggle('hidden', tab !== 'schedule');
-            hwTab.classList.toggle('hidden', tab !== 'homework');
-            animateIn(tab === 'schedule' ? sch : hwTab);
+            const sections = { schedule: 'tab-schedule', homework: 'tab-homework', news: 'tab-news' };
+            Object.entries(sections).forEach(([k, id]) => {
+                document.getElementById(id).classList.toggle('hidden', k !== tab);
+            });
+            animateIn(document.getElementById(sections[tab]));
             if (tab === 'schedule') moveInd('seg-week');
             haptic('light');
         }
@@ -1204,11 +1226,13 @@ HTML_TEMPLATE = r"""
                     if (data.is_admin) {
                         document.getElementById('admin-badge').classList.remove('hidden');
                         document.getElementById('btn-del-hw').classList.remove('hidden');
+                        document.getElementById('news-admin-btn').classList.remove('hidden');
                     }
                     renderGreeting();
                     renderCountdown();
                     renderSchedule(first);
                     renderHomework(first);
+                    renderNews(first);
                     if (first) requestAnimationFrame(() => { moveInd('seg-main'); moveInd('seg-week'); });
                 })
                 .catch(() => {
@@ -1632,6 +1656,74 @@ HTML_TEMPLATE = r"""
             });
         }
 
+        // --- ОБЪЯВЛЕНИЯ ---
+        function renderNews(animate) {
+            if (!appData) return;
+            const list = appData.announcements || [];
+            const container = document.getElementById('news-container');
+            if (list.length === 0) {
+                container.innerHTML = '<div class="toast-empty">Объявлений пока нет</div>';
+                return;
+            }
+            container.innerHTML = list.map((n, i) => `
+                <div class="glass card hw-item ${animate ? 'enter' : ''}" style="${animate ? `animation-delay:${i * 40}ms` : ''}">
+                    <div class="dhead" style="margin-bottom:8px">
+                        <span class="muted small">${esc(n.created_at)}</span>
+                        ${appData.is_admin ? `<button class="btn btn-danger btn-sm" onclick="deleteNews(${Number(n.id)})">Удалить</button>` : ''}
+                    </div>
+                    <div class="hw-task">${esc(n.text)}</div>
+                    <div class="hw-author">${esc(n.author)}</div>
+                </div>
+            `).join('');
+        }
+
+        function openNewsComposer() {
+            document.getElementById('news-text').value = '';
+            openSheet('news-sheet');
+        }
+
+        function closeNewsComposer() { closeSheet('news-sheet'); }
+
+        function publishNews() {
+            const text = document.getElementById('news-text').value.trim();
+            if (!text) {
+                haptic('warning');
+                alert('Введите текст объявления');
+                return;
+            }
+            fetch('/api/announcements', {
+                method: 'POST',
+                headers: authHeaders(true),
+                body: JSON.stringify({ text })
+            }).then(res => res.json()).then(data => {
+                if (data.status === 'success') {
+                    haptic('success');
+                    closeNewsComposer();
+                    loadData();
+                } else {
+                    haptic('error');
+                    alert('Ошибка: ' + (data.message || 'Не удалось опубликовать'));
+                }
+            });
+        }
+
+        function deleteNews(id) {
+            if (!confirm('Удалить объявление?')) return;
+            fetch('/api/announcements/delete', {
+                method: 'POST',
+                headers: authHeaders(true),
+                body: JSON.stringify({ id })
+            }).then(res => res.json()).then(data => {
+                if (data.status === 'success') {
+                    haptic('success');
+                    loadData();
+                } else {
+                    haptic('error');
+                    alert('Ошибка: ' + (data.message || 'Не удалось удалить'));
+                }
+            });
+        }
+
         // --- Делегирование событий ---
         window.addEventListener('DOMContentLoaded', () => {
             document.getElementById('subject-list').addEventListener('click', e => {
@@ -1808,6 +1900,26 @@ def init_db():
             )
         """)
         conn.execute("""
+            CREATE TABLE IF NOT EXISTS announcements (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                text TEXT NOT NULL,
+                author TEXT,
+                created_at TEXT
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS chats (
+                chat_id INTEGER PRIMARY KEY,
+                title TEXT
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS meta (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )
+        """)
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS schedule_overrides (
                 day TEXT NOT NULL,
                 week_type INTEGER NOT NULL,
@@ -1948,9 +2060,12 @@ def get_api_data():
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM homework ORDER BY date_key DESC, id DESC")
         homework = [dict(row) for row in cursor.fetchall()]
+        cursor.execute("SELECT * FROM announcements ORDER BY id DESC")
+        announcements = [dict(row) for row in cursor.fetchall()]
 
     return jsonify({
         "is_admin": is_admin,
+        "announcements": announcements,
         "current_week": current_week_schedule,
         "next_week": next_week_schedule,
         "homework": homework,
@@ -2050,6 +2165,49 @@ def delete_homework():
     return jsonify({"status": "success"})
 
 
+@app.route("/api/announcements", methods=["POST"])
+def add_announcement():
+    user_id, first_name, last_name = get_request_user()
+    if user_id not in ADMINS:
+        return jsonify({"status": "error", "message": "Нет прав админа"}), 403
+
+    data = request.get_json(silent=True) or {}
+    text = (data.get("text") or "").strip()
+    if not text:
+        return jsonify({"status": "error", "message": "Пустой текст"}), 400
+    if len(text) > 1000:
+        return jsonify({"status": "error", "message": "Слишком длинный текст"}), 400
+
+    author = first_name + (f" {last_name}" if last_name else "")
+    created = get_now().strftime("%d.%m.%Y %H:%M")
+    with db_lock, get_db() as conn:
+        conn.execute(
+            "INSERT INTO announcements (text, author, created_at) VALUES (?, ?, ?)",
+            (text, author, created),
+        )
+    return jsonify({"status": "success"})
+
+
+@app.route("/api/announcements/delete", methods=["POST"])
+def delete_announcement():
+    user_id, _, _ = get_request_user()
+    if user_id not in ADMINS:
+        return jsonify({"status": "error", "message": "Нет прав админа"}), 403
+
+    data = request.get_json(silent=True) or {}
+    ann_id = data.get("id")
+    if not isinstance(ann_id, int) or isinstance(ann_id, bool):
+        return jsonify({"status": "error", "message": "Неверный идентификатор"}), 400
+
+    with db_lock, get_db() as conn:
+        cur = conn.execute("DELETE FROM announcements WHERE id = ?", (ann_id,))
+        deleted = cur.rowcount
+
+    if not deleted:
+        return jsonify({"status": "error", "message": "Объявление не найдено"}), 404
+    return jsonify({"status": "success"})
+
+
 # --- КЛАВИАТУРЫ ---
 APP_BUTTON_TEXT = "🚀 Открыть приложение ЭЗС 12-26"
 
@@ -2124,14 +2282,113 @@ def send_safe(chat_id, text, markup=None):
         return False
 
 
+# --- ЕЖЕДНЕВНАЯ РАССЫЛКА РАСПИСАНИЯ В ГРУППЫ ---
+DAILY_SEND_HOUR = 7
+DAILY_SEND_MINUTE = 30
+DAILY_WINDOW_END_HOUR = 9  # если бот был выключен в 07:30, попробует отправить до 09:00
+
+
+def register_chat(chat_id, title):
+    with db_lock, get_db() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO chats (chat_id, title) VALUES (?, ?)",
+            (chat_id, title or ""),
+        )
+
+
+def unregister_chat(chat_id):
+    with db_lock, get_db() as conn:
+        conn.execute("DELETE FROM chats WHERE chat_id = ?", (chat_id,))
+
+
+def get_chats():
+    with db_lock, get_db() as conn:
+        return [row["chat_id"] for row in conn.execute("SELECT chat_id FROM chats")]
+
+
+def get_meta(key):
+    with db_lock, get_db() as conn:
+        row = conn.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
+        return row["value"] if row else None
+
+
+def set_meta(key, value):
+    with db_lock, get_db() as conn:
+        conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)", (key, value))
+
+
+def send_schedule_to_groups():
+    """Отправляет расписание на сегодня во все зарегистрированные группы. Возвращает число отправок."""
+    text = format_day(get_now().date(), "Сегодня")
+    sent = 0
+    for chat_id in get_chats():
+        try:
+            bot.send_message(chat_id, text, parse_mode="HTML", reply_markup=get_group_keyboard())
+            sent += 1
+        except telebot.apihelper.ApiTelegramException as e:
+            # 403: бота выгнали из группы или нет прав; 400: чат не найден. Такие группы убираем из рассылки.
+            if e.error_code in (400, 403):
+                log.warning("Группа %s недоступна, убираю из рассылки: %s", chat_id, e)
+                unregister_chat(chat_id)
+            else:
+                log.error("Ошибка отправки в группу %s: %s", chat_id, e)
+        except Exception as e:
+            log.error("Ошибка отправки в группу %s: %s", chat_id, e)
+    return sent
+
+
+def daily_scheduler():
+    """Раз в 30 секунд проверяет время. В 07:30 (до 09:00) отправляет расписание, один раз в день."""
+    while True:
+        try:
+            now = get_now()
+            today_iso = now.date().isoformat()
+            in_window = (
+                (now.hour, now.minute) >= (DAILY_SEND_HOUR, DAILY_SEND_MINUTE)
+                and now.hour < DAILY_WINDOW_END_HOUR
+            )
+            # Воскресенье пропускаем: пар нет
+            if in_window and now.weekday() != 6 and get_meta("daily_sent") != today_iso:
+                sent = send_schedule_to_groups()
+                set_meta("daily_sent", today_iso)
+                log.info("Ежедневная рассылка расписания отправлена в групп: %s", sent)
+        except Exception as e:
+            log.error("Ошибка ежедневной рассылки: %s", e)
+        time.sleep(30)
+
+
 # --- ОБРАБОТЧИКИ БОТА ---
 @bot.message_handler(commands=["start", "menu"])
 def cmd_start(message):
     if message.chat.type == "private":
         send_safe(message.chat.id, "Привет! Используйте кнопки ниже:", get_private_keyboard())
     else:
+        register_chat(message.chat.id, message.chat.title)
         send_safe(message.chat.id, "Привет! Кнопки ниже:", get_group_keyboard())
         send_safe(message.chat.id, "Мини-приложение группы:", get_group_inline())
+
+
+@bot.my_chat_member_handler()
+def on_my_chat_member(update):
+    chat = update.chat
+    if chat.type not in ("group", "supergroup"):
+        return
+    status = update.new_chat_member.status
+    if status in ("member", "administrator"):
+        register_chat(chat.id, chat.title)
+        log.info("Бот добавлен в группу %s (%s)", chat.title, chat.id)
+    elif status in ("left", "kicked"):
+        unregister_chat(chat.id)
+        log.info("Бот удалён из группы %s (%s)", chat.title, chat.id)
+
+
+@bot.message_handler(commands=["sendtoday"])
+def cmd_sendtoday(message):
+    if message.from_user.id not in ADMINS:
+        send_safe(message.chat.id, "У вас нет прав администратора.")
+        return
+    sent = send_schedule_to_groups()
+    send_safe(message.chat.id, f"Расписание отправлено в групп: {sent}")
 
 
 @bot.message_handler(commands=["admin"])
@@ -2222,6 +2479,7 @@ if __name__ == "__main__":
 
     Thread(target=run_bot, daemon=True).start()
     Thread(target=homework_cleaner, daemon=True).start()
+    Thread(target=daily_scheduler, daemon=True).start()
     log.info("Telegram бот запущен в фоне.")
 
     port = int(os.environ.get("PORT", 5000))
