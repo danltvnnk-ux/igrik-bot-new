@@ -197,7 +197,7 @@ HTML_TEMPLATE = r"""
             overflow-x: hidden;
         }
 
-        /* --- Амбиент-фон: медленно дрейфующие блики, сдвигаются при скролле --- */
+        /* --- Амбиент-фон --- */
         .mesh {
             position: fixed;
             inset: -20%;
@@ -221,7 +221,7 @@ HTML_TEMPLATE = r"""
             to { transform: translate3d(6vw, -4vh, 0) scale(1.12); }
         }
 
-        /* --- Контейнер приложения: уходит в глубину при открытой шторке --- */
+        /* --- Контейнер приложения --- */
         #app {
             position: relative;
             z-index: 1;
@@ -236,7 +236,7 @@ HTML_TEMPLATE = r"""
             filter: brightness(0.6);
         }
 
-        /* --- Стекло: полупрозрачный слой, размытие, градиентная обводка, многослойная тень --- */
+        /* --- Стекло --- */
         .glass {
             position: relative;
             background: linear-gradient(160deg, rgba(44, 33, 26, 0.62), rgba(20, 15, 12, 0.6));
@@ -309,7 +309,7 @@ HTML_TEMPLATE = r"""
         .cd-txt { font-size: 13px; color: var(--text-2); line-height: 1.35; }
         .cd-txt b { color: var(--text); font-weight: 700; display: block; font-size: 14px; }
 
-        /* --- Сегмент-контрол с физически переезжающим индикатором --- */
+        /* --- Сегмент-контрол --- */
         .seg {
             position: relative;
             display: flex;
@@ -348,7 +348,6 @@ HTML_TEMPLATE = r"""
         .seg-sm .seg-ind { top: 3px; bottom: 3px; border-radius: 11px; }
         .seg-sm button { padding: 9px 6px; font-size: 12.5px; border-radius: 11px; }
 
-        /* --- Секции и переходы --- */
         .hidden { display: none !important; }
         .enter { animation: enter 0.6s var(--ease) both; }
         @keyframes enter {
@@ -359,7 +358,7 @@ HTML_TEMPLATE = r"""
         .stack { display: flex; flex-direction: column; gap: 14px; }
         .stack-sm { display: flex; flex-direction: column; gap: 12px; }
 
-        /* --- Карточки с 3D-наклоном --- */
+        /* --- Карточки расписания с подписями пар/уроков --- */
         .card {
             padding: 18px 18px 16px;
             border-radius: 24px;
@@ -411,21 +410,29 @@ HTML_TEMPLATE = r"""
             color: #F3C48F;
             margin-right: 8px;
         }
-        .lrow {
-            display: grid;
-            grid-template-columns: 92px 1fr;
-            gap: 10px;
-            align-items: baseline;
-            font-size: 14px;
-            padding: 4px 0;
+        
+        /* Стили для красивого отображения подписей пар/уроков и времени */
+        .lesson-item {
+            padding: 6px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.03);
         }
-        .ltime {
+        .lesson-item:last-child { border-bottom: none; }
+        .lesson-meta {
+            display: flex;
+            justify-content: space-between;
             font-size: 11px;
-            color: var(--text-3);
-            font-weight: 600;
-            font-variant-numeric: tabular-nums;
+            font-weight: 700;
+            color: var(--caramel-1);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            margin-bottom: 2px;
         }
-        .lsub { font-weight: 600; color: #EFE3D3; }
+        .lesson-sub {
+            font-size: 14.5px;
+            font-weight: 600;
+            color: #EFE3D3;
+        }
+
         .empty { color: var(--text-3); font-style: italic; font-size: 14px; padding: 4px 0; }
         .dact {
             display: flex;
@@ -436,7 +443,7 @@ HTML_TEMPLATE = r"""
             border-top: 1px solid rgba(255, 255, 255, 0.06);
         }
 
-        /* --- Карточки домашки --- */
+        /* --- Карточки домашки / объявлений --- */
         .hw-item { padding: 16px 16px 14px; }
         .hw-subj { font-size: 16px; font-weight: 800; letter-spacing: -0.01em; }
         .hw-task { font-size: 14.5px; color: #D9C8B5; white-space: pre-wrap; line-height: 1.5; margin: 8px 0 10px; }
@@ -832,11 +839,13 @@ HTML_TEMPLATE = r"""
     <div id="news-sheet" class="sheet glass">
         <div class="handle"></div>
         <div class="sh-title">
-            <span>Объявление</span>
+            <span>Новое объявление</span>
             <button class="sh-close" onclick="closeNewsComposer()">✕</button>
         </div>
         <div class="stack-sm">
-            <textarea id="news-text" class="input" rows="5" maxlength="1000" placeholder="Текст объявления"></textarea>
+            <div class="label">Дата события / показа</div>
+            <input id="news-date" type="date" class="input input-sm">
+            <textarea id="news-text" class="input" rows="4" maxlength="1000" placeholder="Текст объявления..."></textarea>
             <button class="btn btn-block" onclick="publishNews()">Опубликовать</button>
         </div>
     </div>
@@ -952,7 +961,7 @@ HTML_TEMPLATE = r"""
             return (appData && appData.subject_dates && appData.subject_dates[subject]) || [];
         }
 
-        // Разбор строки расписания: "1 пара (08.30-10.10): Химия"
+        // Разбор строки расписания
         function parseLesson(s) {
             const m = s.match(/^(.*?)\s*\(([^)]*)\)\s*:\s*(.*)$/);
             if (m) return { label: m[1].trim(), time: m[2].trim(), subject: m[3].trim() };
@@ -977,7 +986,6 @@ HTML_TEMPLATE = r"""
             return h;
         }
 
-        // --- Тактильный отклик Telegram ---
         function haptic(kind) {
             try {
                 const h = tg.HapticFeedback;
@@ -989,10 +997,9 @@ HTML_TEMPLATE = r"""
                 } else {
                     h.impactOccurred(kind || 'light');
                 }
-            } catch (e) { /* клиент без поддержки вибрации */ }
+            } catch (e) {}
         }
 
-        // --- Шторки ---
         function openSheet(id) {
             document.getElementById(id).classList.add('open');
             document.getElementById('bd').classList.add('open');
@@ -1012,7 +1019,6 @@ HTML_TEMPLATE = r"""
             editingDay = null;
         }
 
-        // --- Сегмент-контрол: индикатор переезжает на нужную кнопку ---
         function moveInd(segId) {
             const seg = document.getElementById(segId);
             if (!seg) return;
@@ -1036,7 +1042,6 @@ HTML_TEMPLATE = r"""
             el.classList.add('enter');
         }
 
-        // --- Переключение вкладок ---
         function switchTab(tab) {
             if (tab === activeTab) return;
             activeTab = tab;
@@ -1050,7 +1055,6 @@ HTML_TEMPLATE = r"""
             haptic('light');
         }
 
-        // --- Смена недели ---
         function setWeek(type) {
             if (type === activeWeekType) return;
             activeWeekType = type;
@@ -1059,7 +1063,6 @@ HTML_TEMPLATE = r"""
             haptic('light');
         }
 
-        // --- Свайпы для смены недель ---
         function initSwipe() {
             const el = document.getElementById('tab-schedule');
             let sx = 0, sy = 0, active = false;
@@ -1082,7 +1085,6 @@ HTML_TEMPLATE = r"""
             }, { passive: true });
         }
 
-        // --- 3D-наклон карточек при касании ---
         function initTilt() {
             const reset = el => {
                 if (!el) return;
@@ -1111,7 +1113,6 @@ HTML_TEMPLATE = r"""
             document.addEventListener('pointercancel', () => { if (lastTilt) { reset(lastTilt); lastTilt = null; } });
         }
 
-        // --- Параллакс амбиент-фона при скролле ---
         function initParallax() {
             const mesh = document.getElementById('mesh');
             let raf = null;
@@ -1125,7 +1126,6 @@ HTML_TEMPLATE = r"""
             }, { passive: true });
         }
 
-        // --- Тактильный отклик на все кнопки ---
         function initHaptics() {
             document.addEventListener('click', e => {
                 const b = e.target.closest && e.target.closest('button');
@@ -1133,7 +1133,6 @@ HTML_TEMPLATE = r"""
             }, true);
         }
 
-        // --- Приветствие ---
         function renderGreeting() {
             const u = (tg.initDataUnsafe && tg.initDataUnsafe.user) || {};
             const name = u.first_name || '';
@@ -1145,16 +1144,6 @@ HTML_TEMPLATE = r"""
             document.getElementById('greeting').textContent = name ? `${g}, ${name} 👋` : `${g} 👋`;
         }
 
-        // --- Виджет каникул ---
-        // Зимние: 19 января (старт) - 1 февраля, выход 2 февраля.
-        // Летние: 1 июля - 31 августа.
-        // Логика по календарю дат:
-        //  1 янв - 18 янв: до зимних каникул (19 января)
-        //  19 янв - 1 фев: зимние каникулы, показываем до выхода (2 февраля)
-        //  2 фев - 30 июн: до летних каникул (1 июля)
-        //  1 июл - 31 авг: летние каникулы, плашка скрыта
-        //  1 сен - 30 ноя: плашка скрыта
-        //  1 дек - 31 дек: до зимних каникул (19 января следующего года)
         function plural(n, one, few, many) {
             const a = Math.abs(n) % 100;
             const b = a % 10;
@@ -1174,7 +1163,7 @@ HTML_TEMPLATE = r"""
             const diff = (to) => Math.round((to - today) / 86400000);
             const mkDate = (yy, mm, dd) => new Date(yy, mm, dd);
 
-            const mo = p.m; // 0-11
+            const mo = p.m;
             const d = p.d;
             let num = null, title = '', sub = '';
 
@@ -1208,7 +1197,6 @@ HTML_TEMPLATE = r"""
             el.classList.remove('hidden');
         }
 
-        // --- Скелетоны ---
         function skeletons(n) {
             return Array.from({ length: n }, () => '<div class="skel"></div>').join('');
         }
@@ -1241,7 +1229,7 @@ HTML_TEMPLATE = r"""
                 });
         }
 
-        // --- РАСПИСАНИЕ ---
+        // --- РАСПИСАНИЕ С ПОДПИСЯМИ ПАР И УРОКОВ ---
         function renderSchedule(animate) {
             if (!appData) return;
             const container = document.getElementById('schedule-container');
@@ -1251,13 +1239,26 @@ HTML_TEMPLATE = r"""
                 const isToday = day.full_date === appData.today_date;
                 const delay = animate ? `animation-delay:${i * 45}ms` : '';
                 const todayTag = isToday ? '<span class="today-tag">СЕГОДНЯ</span>' : '';
+                
                 const lessons = day.lessons.length
                     ? day.lessons.map(l => {
                         const m = l.match(/^(.*?)\s*\(([^)]*)\)\s*:\s*(.*)$/);
                         if (m) {
-                            return `<div class="lrow"><span class="ltime">${esc(m[2])}</span><span class="lsub">${esc(m[3])}</span></div>`;
+                            return `
+                            <div class="lesson-item">
+                                <div class="lesson-meta"><span>${esc(m[1])}</span><span>${esc(m[2])}</span></div>
+                                <div class="lesson-sub">${esc(m[3])}</div>
+                            </div>`;
                         }
-                        return `<div class="lrow"><span class="lsub">${esc(l)}</span></div>`;
+                        const m2 = l.match(/^(.*?):\s*(.*)$/);
+                        if (m2) {
+                            return `
+                            <div class="lesson-item">
+                                <div class="lesson-meta"><span>${esc(m2[1])}</span></div>
+                                <div class="lesson-sub">${esc(m2[2])}</div>
+                            </div>`;
+                        }
+                        return `<div class="lesson-item"><div class="lesson-sub">${esc(l)}</div></div>`;
                     }).join('')
                     : '<div class="empty">Пар нет</div>';
 
@@ -1268,7 +1269,7 @@ HTML_TEMPLATE = r"""
                         <span class="dname">${esc(day.day)}</span>
                         <span style="display:flex;align-items:center">${todayTag}<span class="tag">${esc(day.date)}</span></span>
                     </div>
-                    ${lessons}
+                    <div style="display:flex;flex-direction:column;gap:6px">${lessons}</div>
                     <div class="dact">
                         <button class="btn btn-sm" onclick="openDayHwModal('${esc(day.full_date)}', '${esc(day.day)}', '${esc(day.date)}')">Домашка</button>
                         ${appData.is_admin ? `<button class="btn btn-ghost btn-sm" onclick="openEditModal('${esc(day.day)}')">Изменить</button>` : ''}
@@ -1276,7 +1277,6 @@ HTML_TEMPLATE = r"""
                 </div>`;
             }).join('');
 
-            // Автопрокрутка к сегодняшнему дню: только один раз, при открытии
             if (!scrolledToToday && activeWeekType === 'current' && activeTab === 'schedule') {
                 scrolledToToday = true;
                 const el = container.querySelector('.card.today');
@@ -1324,7 +1324,6 @@ HTML_TEMPLATE = r"""
             editingDay = null;
         }
 
-        // Переносит текст из полей в массив (чтобы не потерять правки)
         function syncFromInputs() {
             document.querySelectorAll('#modal-lessons-container input[data-index]').forEach(inp => {
                 const i = Number(inp.dataset.index);
@@ -1378,8 +1377,6 @@ HTML_TEMPLATE = r"""
         function renderAddPanel() {
             document.getElementById('kind-pair').classList.toggle('on', addState.kind === 'pair');
             document.getElementById('kind-lesson').classList.toggle('on', addState.kind === 'lesson');
-            document.getElementById('kind-pair').classList.toggle('slot-on', addState.kind === 'pair');
-            document.getElementById('kind-lesson').classList.toggle('slot-on', addState.kind === 'lesson');
 
             const slots = addState.kind === 'pair' ? PAIR_SLOTS : LESSON_SLOTS;
             document.getElementById('slot-list').innerHTML = slots.map((s, i) => `
@@ -1493,7 +1490,6 @@ HTML_TEMPLATE = r"""
             `).join('');
         }
 
-        // --- ДОМАШКА: УДАЛЕНИЕ (только админы) ---
         function openDeleteHwModal() {
             if (!appData) return;
             const list = document.getElementById('del-hw-list');
@@ -1656,7 +1652,7 @@ HTML_TEMPLATE = r"""
             });
         }
 
-        // --- ОБЪЯВЛЕНИЯ ---
+        // --- ОБЪЯВЛЕНИЯ С ДАТОЙ И УДАЛЕНИЕМ ---
         function renderNews(animate) {
             if (!appData) return;
             const list = appData.announcements || [];
@@ -1666,19 +1662,23 @@ HTML_TEMPLATE = r"""
                 return;
             }
             container.innerHTML = list.map((n, i) => `
-                <div class="glass card hw-item ${animate ? 'enter' : ''}" style="${animate ? `animation-delay:${i * 40}ms` : ''}">
+                <div class="glass card hw-item tilt ${animate ? 'enter' : ''}" style="${animate ? `animation-delay:${i * 40}ms` : ''}">
+                    <div class="shine"></div>
                     <div class="dhead" style="margin-bottom:8px">
-                        <span class="muted small">${esc(n.created_at)}</span>
+                        <span class="tag">${esc(n.date_key || n.created_at)}</span>
                         ${appData.is_admin ? `<button class="btn btn-danger btn-sm" onclick="deleteNews(${Number(n.id)})">Удалить</button>` : ''}
                     </div>
                     <div class="hw-task">${esc(n.text)}</div>
-                    <div class="hw-author">${esc(n.author)}</div>
+                    <div class="hw-author">Опубликовал: ${esc(n.author)}</div>
                 </div>
             `).join('');
         }
 
         function openNewsComposer() {
             document.getElementById('news-text').value = '';
+            if (appData && appData.today_date) {
+                document.getElementById('news-date').value = appData.today_date;
+            }
             openSheet('news-sheet');
         }
 
@@ -1686,6 +1686,12 @@ HTML_TEMPLATE = r"""
 
         function publishNews() {
             const text = document.getElementById('news-text').value.trim();
+            const dateKey = document.getElementById('news-date').value;
+            if (!dateKey) {
+                haptic('warning');
+                alert('Укажите дату объявления');
+                return;
+            }
             if (!text) {
                 haptic('warning');
                 alert('Введите текст объявления');
@@ -1694,7 +1700,7 @@ HTML_TEMPLATE = r"""
             fetch('/api/announcements', {
                 method: 'POST',
                 headers: authHeaders(true),
-                body: JSON.stringify({ text })
+                body: JSON.stringify({ text, date_key: dateKey })
             }).then(res => res.json()).then(data => {
                 if (data.status === 'success') {
                     haptic('success');
@@ -1724,7 +1730,6 @@ HTML_TEMPLATE = r"""
             });
         }
 
-        // --- Делегирование событий ---
         window.addEventListener('DOMContentLoaded', () => {
             document.getElementById('subject-list').addEventListener('click', e => {
                 const btn = e.target.closest('button[data-subject]');
@@ -1907,6 +1912,12 @@ def init_db():
                 created_at TEXT
             )
         """)
+        cols = [r["name"] for r in conn.execute("PRAGMA table_info(announcements)")]
+        if "date_key" not in cols:
+            conn.execute("ALTER TABLE announcements ADD COLUMN date_key TEXT")
+        if "notified" not in cols:
+            conn.execute("ALTER TABLE announcements ADD COLUMN notified INTEGER NOT NULL DEFAULT 0")
+        conn.execute("DELETE FROM announcements WHERE date_key IS NULL")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS chats (
                 chat_id INTEGER PRIMARY KEY,
@@ -1951,18 +1962,16 @@ def get_week_type(target_date):
 
 
 def schedule_anchor(now):
-    """Дата, от которой считается «текущая» неделя.
-    С субботы после SATURDAY_SWITCH_HOUR и в воскресенье текущей становится следующая неделя."""
     if now.weekday() == 6 or (now.weekday() == 5 and now.hour >= SATURDAY_SWITCH_HOUR):
         return now.date() + timedelta(days=7)
     return now.date()
 
 
 def purge_old_homework():
-    """Удаляет ДЗ, дата которых уже прошла (то есть наступил новый день)."""
     today_iso = get_now().date().isoformat()
     with db_lock, get_db() as conn:
         conn.execute("DELETE FROM homework WHERE date_key < ?", (today_iso,))
+        conn.execute("DELETE FROM announcements WHERE date_key < ?", (today_iso,))
 
 
 def homework_cleaner():
@@ -1970,7 +1979,7 @@ def homework_cleaner():
         try:
             purge_old_homework()
         except Exception as e:
-            log.error("Ошибка очистки ДЗ: %s", e)
+            log.error("Ошибка очистки ДЗ/объявлений: %s", e)
         time.sleep(HOMEWORK_CLEAN_INTERVAL)
 
 
@@ -1979,7 +1988,6 @@ PLACEHOLDER_SUBJECT = "Новый предмет"
 
 
 def parse_subject(lesson):
-    """Достаёт название предмета из строки вида '1 пара (08.30-10.10): Химия'."""
     m = SUBJECT_RE.search(lesson)
     if not m:
         return None
@@ -1990,7 +1998,6 @@ def parse_subject(lesson):
 
 
 def get_subjects():
-    """Список всех предметов из расписания (включая правки админов)."""
     names = set()
     with db_lock:
         for weeks in SCHEDULE.values():
@@ -2003,7 +2010,6 @@ def get_subjects():
 
 
 def build_subject_dates(start, days=SUBJECT_HORIZON_DAYS):
-    """Для каждого предмета — список дат (ISO), на которые у него есть пара, начиная с start."""
     found = {}
     for i in range(days):
         d = start + timedelta(days=i)
@@ -2060,7 +2066,7 @@ def get_api_data():
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM homework ORDER BY date_key DESC, id DESC")
         homework = [dict(row) for row in cursor.fetchall()]
-        cursor.execute("SELECT * FROM announcements ORDER BY id DESC")
+        cursor.execute("SELECT * FROM announcements ORDER BY date_key ASC, id DESC")
         announcements = [dict(row) for row in cursor.fetchall()]
 
     return jsonify({
@@ -2178,13 +2184,25 @@ def add_announcement():
     if len(text) > 1000:
         return jsonify({"status": "error", "message": "Слишком длинный текст"}), 400
 
+    date_key_str = data.get("date_key")
+    try:
+        parsed_date = date.fromisoformat(str(date_key_str))
+    except ValueError:
+        return jsonify({"status": "error", "message": "Укажите дату объявления"}), 400
+    if parsed_date < get_now().date():
+        return jsonify({"status": "error", "message": "Дата уже прошла"}), 400
+
     author = first_name + (f" {last_name}" if last_name else "")
     created = get_now().strftime("%d.%m.%Y %H:%M")
     with db_lock, get_db() as conn:
         conn.execute(
-            "INSERT INTO announcements (text, author, created_at) VALUES (?, ?, ?)",
-            (text, author, created),
+            "INSERT INTO announcements (text, author, created_at, date_key, notified) VALUES (?, ?, ?, ?, 0)",
+            (text, author, created, parsed_date.isoformat()),
         )
+    try:
+        notify_due_announcements()
+    except Exception as e:
+        log.error("Ошибка немедленной рассылки объявления: %s", e)
     return jsonify({"status": "success"})
 
 
@@ -2282,10 +2300,10 @@ def send_safe(chat_id, text, markup=None):
         return False
 
 
-# --- ЕЖЕДНЕВНАЯ РАССЫЛКА РАСПИСАНИЯ В ГРУППЫ ---
+# --- РАССЫЛКИ И ОПОВЕЩЕНИЯ ---
 DAILY_SEND_HOUR = 7
 DAILY_SEND_MINUTE = 30
-DAILY_WINDOW_END_HOUR = 9  # если бот был выключен в 07:30, попробует отправить до 09:00
+DAILY_WINDOW_END_HOUR = 9
 
 
 def register_chat(chat_id, title):
@@ -2318,7 +2336,6 @@ def set_meta(key, value):
 
 
 def send_schedule_to_groups():
-    """Отправляет расписание на сегодня во все зарегистрированные группы. Возвращает число отправок."""
     text = format_day(get_now().date(), "Сегодня")
     sent = 0
     for chat_id in get_chats():
@@ -2326,9 +2343,7 @@ def send_schedule_to_groups():
             bot.send_message(chat_id, text, parse_mode="HTML", reply_markup=get_group_keyboard())
             sent += 1
         except telebot.apihelper.ApiTelegramException as e:
-            # 403: бота выгнали из группы или нет прав; 400: чат не найден. Такие группы убираем из рассылки.
             if e.error_code in (400, 403):
-                log.warning("Группа %s недоступна, убираю из рассылки: %s", chat_id, e)
                 unregister_chat(chat_id)
             else:
                 log.error("Ошибка отправки в группу %s: %s", chat_id, e)
@@ -2337,8 +2352,41 @@ def send_schedule_to_groups():
     return sent
 
 
+def send_announcement_to_groups(text, date_key):
+    shown = date.fromisoformat(date_key).strftime("%d.%m")
+    msg = f"📢 <b>Объявление на {shown}</b>\n\n{html.escape(text)}"
+    sent = 0
+    for chat_id in get_chats():
+        try:
+            bot.send_message(chat_id, msg, parse_mode="HTML")
+            sent += 1
+        except telebot.apihelper.ApiTelegramException as e:
+            if e.error_code in (400, 403):
+                unregister_chat(chat_id)
+            else:
+                log.error("Ошибка отправки объявления в группу %s: %s", chat_id, e)
+        except Exception as e:
+            log.error("Ошибка отправки объявления в группу %s: %s", chat_id, e)
+    return sent
+
+
+def notify_due_announcements():
+    """Рассылка объявлений за день до даты или в день даты."""
+    now = get_now()
+    today_iso = now.date().isoformat()
+    tomorrow_iso = (now.date() + timedelta(days=1)).isoformat()
+    with db_lock, get_db() as conn:
+        rows = conn.execute(
+            "SELECT id, text, date_key FROM announcements WHERE notified = 0 AND date_key <= ?",
+            (tomorrow_iso,),
+        ).fetchall()
+    for row in rows:
+        send_announcement_to_groups(row["text"], row["date_key"])
+        with db_lock, get_db() as conn:
+            conn.execute("UPDATE announcements SET notified = 1 WHERE id = ?", (row["id"],))
+
+
 def daily_scheduler():
-    """Раз в 30 секунд проверяет время. В 07:30 (до 09:00) отправляет расписание, один раз в день."""
     while True:
         try:
             now = get_now()
@@ -2347,7 +2395,7 @@ def daily_scheduler():
                 (now.hour, now.minute) >= (DAILY_SEND_HOUR, DAILY_SEND_MINUTE)
                 and now.hour < DAILY_WINDOW_END_HOUR
             )
-            # Воскресенье пропускаем: пар нет
+            notify_due_announcements()
             if in_window and now.weekday() != 6 and get_meta("daily_sent") != today_iso:
                 sent = send_schedule_to_groups()
                 set_meta("daily_sent", today_iso)
@@ -2376,10 +2424,8 @@ def on_my_chat_member(update):
     status = update.new_chat_member.status
     if status in ("member", "administrator"):
         register_chat(chat.id, chat.title)
-        log.info("Бот добавлен в группу %s (%s)", chat.title, chat.id)
     elif status in ("left", "kicked"):
         unregister_chat(chat.id)
-        log.info("Бот удалён из группы %s (%s)", chat.title, chat.id)
 
 
 @bot.message_handler(commands=["sendtoday"])
@@ -2450,7 +2496,7 @@ def log_updates(messages):
         log.info("update: chat_id=%s type=%s", m.chat.id, m.chat.type)
 
 
-# --- ЗАПУСК (Flask на порту PORT от Railway в главном потоке) ---
+# --- ЗАПУСК ---
 if __name__ == "__main__":
     def run_bot():
         bot.set_update_listener(log_updates)
