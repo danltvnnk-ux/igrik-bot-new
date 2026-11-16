@@ -263,10 +263,18 @@ HTML_TEMPLATE = r"""
 
         /* --- Шапка --- */
         .hdr {
+            position: sticky;
+            top: 0;
+            z-index: 30;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin: 6px 4px 4px;
+            margin: -14px -16px 6px;
+            padding: 14px 16px 10px;
+            background: rgba(10, 8, 7, var(--hdr-a, 0));
+            -webkit-backdrop-filter: blur(var(--hdr-blur, 0px)) saturate(160%);
+            backdrop-filter: blur(var(--hdr-blur, 0px)) saturate(160%);
+            transition: background 0.25s var(--ease), backdrop-filter 0.25s var(--ease);
         }
         .brand {
             font-size: 22px;
@@ -326,7 +334,7 @@ HTML_TEMPLATE = r"""
             border-radius: 14px;
             background: linear-gradient(135deg, var(--caramel-1), var(--caramel-2));
             box-shadow: 0 10px 24px -10px rgba(224, 160, 106, 0.8);
-            transition: transform 0.55s var(--ease), width 0.55s var(--ease);
+            transition: transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1), width 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
         }
         .seg button {
             position: relative;
@@ -374,6 +382,26 @@ HTML_TEMPLATE = r"""
         }
         .card.today::before {
             background: linear-gradient(135deg, #F3C48F, rgba(224, 160, 106, 0.55) 45%, rgba(168, 104, 58, 0.5));
+        }
+        .card.today {
+            background: linear-gradient(160deg, rgba(150, 88, 46, 0.42), rgba(24, 17, 13, 0.78) 62%);
+        }
+        .card.today::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: inherit;
+            pointer-events: none;
+            background: linear-gradient(115deg, transparent 22%, rgba(255, 214, 170, 0.22) 44%, rgba(255, 150, 90, 0.2) 52%, transparent 74%);
+            background-size: 260% 100%;
+            mix-blend-mode: screen;
+            opacity: 0.8;
+            animation: holo 7s linear infinite;
+        }
+        .card.today.active::after { opacity: 1; }
+        @keyframes holo {
+            from { background-position: 0% 0; }
+            to { background-position: 200% 0; }
         }
         .shine {
             position: absolute;
@@ -427,6 +455,84 @@ HTML_TEMPLATE = r"""
             letter-spacing: 0.04em;
             margin-bottom: 2px;
         }
+        .plus {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: 0;
+            background: linear-gradient(135deg, var(--caramel-1), var(--caramel-2));
+            color: #fff;
+            font-size: 24px;
+            line-height: 1;
+            font-weight: 500;
+            cursor: pointer;
+            box-shadow: 0 12px 26px -12px rgba(224, 160, 106, 0.9);
+        }
+        button { position: relative; overflow: hidden; }
+        .ripple-el {
+            position: absolute;
+            border-radius: 50%;
+            background: rgba(255, 240, 220, 0.32);
+            transform: scale(0);
+            animation: rip 0.6s var(--ease) forwards;
+            pointer-events: none;
+        }
+        @keyframes rip { to { transform: scale(2.6); opacity: 0; } }
+
+        .empty-state { text-align: center; padding: 36px 12px; color: var(--text-3); font-size: 14px; }
+        .empty-ico { display: block; font-size: 40px; margin-bottom: 8px; animation: bob 2.6s ease-in-out infinite; }
+        @keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+
+        .tag-hot { background: rgba(255, 120, 60, 0.18); border-color: rgba(255, 120, 60, 0.65); color: #FFD2B8; }
+        .tag-warm { background: rgba(224, 160, 106, 0.16); border-color: rgba(224, 160, 106, 0.5); color: #F3C48F; }
+        .hw-item:has(.tag-hot) { box-shadow: 0 0 0 1px rgba(255, 120, 60, 0.55), 0 0 22px -8px rgba(255, 120, 60, 0.6); }
+        .hw-item:has(.tag-warm) { box-shadow: 0 0 0 1px rgba(224, 160, 106, 0.4), 0 0 18px -10px rgba(224, 160, 106, 0.5); }
+
+        .strip { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; margin-bottom: 14px; }
+        .wk-day {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 3px;
+            padding: 8px 0;
+            border-radius: 14px;
+            border: 1px solid rgba(255, 255, 255, 0.07);
+            background: rgba(255, 255, 255, 0.04);
+            color: var(--text-2);
+            font: inherit;
+            cursor: pointer;
+        }
+        .wk-day span { font-size: 11px; font-weight: 700; }
+        .wk-day b { font-size: 15px; color: var(--text); }
+        .wk-day.is-today { border-color: rgba(224, 160, 106, 0.7); color: #F3C48F; }
+        .wk-dots { display: flex; gap: 3px; height: 5px; }
+        .wk-dots i { width: 4px; height: 4px; border-radius: 50%; background: var(--caramel-1); }
+        .wk-dots i.hw { background: var(--latte); }
+
+        .ptr {
+            position: fixed;
+            top: 0;
+            left: 50%;
+            width: 36px;
+            height: 36px;
+            margin-left: -18px;
+            border-radius: 50%;
+            background: rgba(30, 22, 18, 0.85);
+            -webkit-backdrop-filter: blur(12px);
+            backdrop-filter: blur(12px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--latte);
+            font-size: 16px;
+            z-index: 70;
+            transform: translateY(-60px);
+            transition: transform 0.3s var(--ease);
+            pointer-events: none;
+        }
+        .ptr.busy span { display: inline-block; animation: spin 0.8s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
         .lesson-sub {
             font-size: 14.5px;
             font-weight: 600;
@@ -787,6 +893,7 @@ HTML_TEMPLATE = r"""
                 <button class="on" data-week="current" onclick="setWeek('current')">Эту неделю</button>
                 <button data-week="next" onclick="setWeek('next')">Следующую</button>
             </div>
+            <div id="week-strip" class="strip"></div>
             <div id="schedule-container" class="stack"></div>
         </section>
 
@@ -798,19 +905,24 @@ HTML_TEMPLATE = r"""
                     <button class="btn btn-danger hidden" id="btn-del-hw" onclick="openDeleteHwModal()">Удалить</button>
                 </div>
             </div>
+            <input id="hw-search" class="input input-sm" placeholder="Поиск по предмету или тексту" oninput="renderHomework(false)" style="margin-top:14px">
             <div id="homework-container" class="stack" style="margin-top:14px"></div>
         </section>
 
         <section id="tab-news" class="hidden">
             <div class="glass card">
-                <div class="sec-title">Объявления</div>
-                <button id="news-admin-btn" class="btn btn-block hidden" onclick="openNewsComposer()">Написать объявление</button>
+                <div class="dhead" style="margin-bottom:0">
+                    <div class="sec-title" style="margin:0">Объявления</div>
+                    <button id="news-admin-btn" class="plus hidden" onclick="openNewsComposer()" aria-label="Новое объявление">+</button>
+                </div>
             </div>
+            <input id="news-search" class="input input-sm" placeholder="Поиск по объявлениям" oninput="renderNews(false)" style="margin-top:14px">
             <div id="news-container" class="stack" style="margin-top:14px"></div>
         </section>
     </div>
 
     <div id="bd" class="sheet-bd" onclick="closeAllSheets()"></div>
+    <div id="ptr" class="ptr"><span>↓</span></div>
 
     <!-- Шторка: запись ДЗ -->
     <div id="hw-sheet" class="sheet glass">
@@ -1019,21 +1131,27 @@ HTML_TEMPLATE = r"""
             editingDay = null;
         }
 
-        function moveInd(segId) {
+        function moveInd(segId, stretch) {
             const seg = document.getElementById(segId);
             if (!seg) return;
             const on = seg.querySelector('button.on');
             const ind = seg.querySelector('.seg-ind');
             if (!on || !ind || !on.offsetWidth) return;
+            const x = on.offsetLeft;
             ind.style.width = on.offsetWidth + 'px';
-            ind.style.transform = `translateX(${on.offsetLeft}px)`;
+            // Резиновый эффект: индикатор растягивается в сторону движения и возвращается
+            ind.style.transform = `translateX(${x}px) scaleX(${stretch ? 1.14 : 1})`;
+            if (stretch) {
+                clearTimeout(ind._t);
+                ind._t = setTimeout(() => { ind.style.transform = `translateX(${x}px) scaleX(1)`; }, 220);
+            }
         }
 
         function setOn(segId, attr, value) {
             document.querySelectorAll(`#${segId} button`).forEach(b => {
                 b.classList.toggle('on', b.dataset[attr] === value);
             });
-            moveInd(segId);
+            moveInd(segId, true);
         }
 
         function animateIn(el) {
@@ -1063,25 +1181,41 @@ HTML_TEMPLATE = r"""
             haptic('light');
         }
 
+        const TAB_ORDER = ['schedule', 'homework', 'news'];
+
+        function goTab(dir) {
+            const i = TAB_ORDER.indexOf(activeTab) + dir;
+            if (i < 0 || i >= TAB_ORDER.length) return;
+            switchTab(TAB_ORDER[i]);
+        }
+
+        // Свайпы: на «Расписании» — смена недели, на краю недели — переход к соседней вкладке.
+        // На «Домашке» и «Объявлениях» — переход между вкладками.
         function initSwipe() {
-            const el = document.getElementById('tab-schedule');
-            let sx = 0, sy = 0, active = false;
+            const el = document.getElementById('app');
+            let sx = 0, sy = 0, st = 0;
             el.addEventListener('touchstart', e => {
                 if (document.querySelector('.sheet.open')) return;
                 sx = e.touches[0].clientX;
                 sy = e.touches[0].clientY;
-                active = true;
+                st = Date.now();
             }, { passive: true });
             el.addEventListener('touchend', e => {
-                if (!active) return;
-                active = false;
+                if (!sx || document.querySelector('.sheet.open')) { sx = 0; return; }
                 const t = e.changedTouches[0];
                 const dx = t.clientX - sx;
                 const dy = t.clientY - sy;
-                if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) {
-                    if (dx < 0) setWeek('next');
-                    else setWeek('current');
+                const quick = Date.now() - st < 700;
+                sx = 0;
+                if (!quick || Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 1.6) return;
+                const dir = dx < 0 ? 1 : -1;
+                if (activeTab === 'schedule') {
+                    if (dir === 1 && activeWeekType === 'current') setWeek('next');
+                    else if (dir === -1 && activeWeekType === 'next') setWeek('current');
+                    else if (dir === 1) goTab(1);
+                    return;
                 }
+                goTab(dir);
             }, { passive: true });
         }
 
@@ -1113,6 +1247,14 @@ HTML_TEMPLATE = r"""
             document.addEventListener('pointercancel', () => { if (lastTilt) { reset(lastTilt); lastTilt = null; } });
         }
 
+        function updateHeader(y) {
+            const p = Math.min(1, Math.max(0, y / 80));
+            const hdr = document.querySelector('.hdr');
+            if (!hdr) return;
+            hdr.style.setProperty('--hdr-blur', (20 * p).toFixed(1) + 'px');
+            hdr.style.setProperty('--hdr-a', (0.6 * p).toFixed(2));
+        }
+
         function initParallax() {
             const mesh = document.getElementById('mesh');
             let raf = null;
@@ -1121,7 +1263,54 @@ HTML_TEMPLATE = r"""
                 raf = requestAnimationFrame(() => {
                     const y = window.scrollY || 0;
                     mesh.style.transform = `translate3d(0, ${-y * 0.12}px, 0)`;
+                    updateHeader(y);
                     raf = null;
+                });
+            }, { passive: true });
+        }
+
+        function initRipple() {
+            document.addEventListener('pointerdown', e => {
+                const b = e.target.closest && e.target.closest('button');
+                if (!b || b.disabled) return;
+                const r = b.getBoundingClientRect();
+                const d = Math.max(r.width, r.height) * 1.1;
+                const s = document.createElement('span');
+                s.className = 'ripple-el';
+                s.style.width = s.style.height = d + 'px';
+                s.style.left = (e.clientX - r.left - d / 2) + 'px';
+                s.style.top = (e.clientY - r.top - d / 2) + 'px';
+                b.appendChild(s);
+                setTimeout(() => s.remove(), 650);
+            }, { passive: true });
+        }
+
+        function initPull() {
+            const ptr = document.getElementById('ptr');
+            let startY = 0, pulling = false, dy = 0;
+            window.addEventListener('touchstart', e => {
+                if ((window.scrollY || 0) > 0 || document.querySelector('.sheet.open')) return;
+                startY = e.touches[0].clientY;
+                pulling = true;
+                dy = 0;
+            }, { passive: true });
+            window.addEventListener('touchmove', e => {
+                if (!pulling) return;
+                dy = e.touches[0].clientY - startY;
+                if (dy <= 0) return;
+                const pull = Math.min(dy * 0.4, 70);
+                ptr.style.transform = `translateY(${pull + 6}px)`;
+            }, { passive: true });
+            window.addEventListener('touchend', () => {
+                if (!pulling) return;
+                pulling = false;
+                if (dy * 0.4 < 40) { ptr.style.transform = ''; return; }
+                ptr.classList.add('busy');
+                ptr.style.transform = 'translateY(56px)';
+                Promise.resolve(loadData()).finally(() => {
+                    ptr.classList.remove('busy');
+                    ptr.style.transform = '';
+                    haptic('success');
                 });
             }, { passive: true });
         }
@@ -1153,6 +1342,20 @@ HTML_TEMPLATE = r"""
             return many;
         }
         function dayWord(n) { return plural(n, 'день', 'дня', 'дней'); }
+
+        let countedOnce = false;
+        function countUp(el, to) {
+            if (!el) return;
+            const start = performance.now();
+            const dur = 700;
+            const step = now => {
+                const p = Math.min(1, (now - start) / dur);
+                const e = 1 - Math.pow(1 - p, 3);
+                el.textContent = Math.round(to * e);
+                if (p < 1) requestAnimationFrame(step);
+            };
+            requestAnimationFrame(step);
+        }
 
         function renderCountdown() {
             const el = document.getElementById('countdown');
@@ -1195,6 +1398,7 @@ HTML_TEMPLATE = r"""
                 <div class="cd-txt"><b>${title}</b>${sub} · ${dayWord(value)}</div>
             `;
             el.classList.remove('hidden');
+            if (!countedOnce) { countUp(el.querySelector('.cd-num'), value); countedOnce = true; }
         }
 
         function skeletons(n) {
@@ -1230,6 +1434,11 @@ HTML_TEMPLATE = r"""
         }
 
         // --- РАСПИСАНИЕ С ПОДПИСЯМИ ПАР И УРОКОВ ---
+        function jumpToDay(iso) {
+            const el = document.querySelector(`#schedule-container [data-date="${iso}"]`);
+            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+
         function renderSchedule(animate) {
             if (!appData) return;
             const container = document.getElementById('schedule-container');
@@ -1263,7 +1472,7 @@ HTML_TEMPLATE = r"""
                     : '<div class="empty">Пар нет</div>';
 
                 return `
-                <div class="glass card tilt ${isToday ? 'today' : ''} ${animate ? 'enter' : ''}" style="${delay}">
+                <div class="glass card tilt ${isToday ? 'today' : ''} ${animate ? 'enter' : ''}" style="${delay}" data-date="${day.full_date}">
                     <div class="shine"></div>
                     <div class="dhead">
                         <span class="dname">${esc(day.day)}</span>
@@ -1275,6 +1484,13 @@ HTML_TEMPLATE = r"""
                         ${appData.is_admin ? `<button class="btn btn-ghost btn-sm" onclick="openEditModal('${esc(day.day)}')">Изменить</button>` : ''}
                     </div>
                 </div>`;
+            }).join('');
+
+            const hwDates = new Set(appData.homework.map(h => h.date_key));
+            document.getElementById('week-strip').innerHTML = schedule.map((day, i) => {
+                const isToday = day.full_date === appData.today_date;
+                const dots = (day.lessons.length ? '<i></i>' : '') + (hwDates.has(day.full_date) ? '<i class="hw"></i>' : '');
+                return `<button class="wk-day ${isToday ? 'is-today' : ''}" onclick="jumpToDay('${esc(day.full_date)}')"><span>${WD_SHORT[i]}</span><b>${esc(day.date.slice(0, 2))}</b><div class="wk-dots">${dots}</div></button>`;
             }).join('');
 
             if (!scrolledToToday && activeWeekType === 'current' && activeTab === 'schedule') {
@@ -1459,6 +1675,16 @@ HTML_TEMPLATE = r"""
             });
         }
 
+        function urgTag(dateKey) {
+            const t = parseIso(appData.today_date);
+            const d = parseIso(dateKey);
+            const days = Math.round((new Date(d.y, d.m, d.d) - new Date(t.y, t.m, t.d)) / 86400000);
+            if (days < 0) return '';
+            if (days <= 1) return 'tag-hot';
+            if (days <= 3) return 'tag-warm';
+            return '';
+        }
+
         // --- ДОМАШКА: СПИСОК ---
         function renderHomework(animate) {
             if (!appData) return;
@@ -1471,10 +1697,12 @@ HTML_TEMPLATE = r"""
             const past = appData.homework
                 .filter(h => h.date_key < today)
                 .sort((a, b) => b.date_key.localeCompare(a.date_key) || b.id - a.id);
-            const list = [...upcoming, ...past];
+            const q = (document.getElementById('hw-search')?.value || '').trim().toLowerCase();
+            const list = [...upcoming, ...past].filter(h => !q
+                || h.subject.toLowerCase().includes(q) || h.task.toLowerCase().includes(q));
 
             if (list.length === 0) {
-                container.innerHTML = '<div class="toast-empty">Домашки пока нет ✨</div>';
+                container.innerHTML = '<div class="empty-state"><span class="empty-ico">📚</span>Домашки пока нет</div>';
                 return;
             }
             container.innerHTML = list.map((h, i) => `
@@ -1482,7 +1710,7 @@ HTML_TEMPLATE = r"""
                     <div class="shine"></div>
                     <div class="dhead" style="margin-bottom:0">
                         <span class="hw-subj">${esc(h.subject)}</span>
-                        <span class="tag">${esc(h.date_key)}</span>
+                        <span class="tag ${urgTag(h.date_key)}">${esc(h.date_key)}</span>
                     </div>
                     <div class="hw-task">${esc(h.task)}</div>
                     <div class="hw-author">${esc(h.author)}</div>
@@ -1655,10 +1883,12 @@ HTML_TEMPLATE = r"""
         // --- ОБЪЯВЛЕНИЯ С ДАТОЙ И УДАЛЕНИЕМ ---
         function renderNews(animate) {
             if (!appData) return;
-            const list = appData.announcements || [];
+            const q = (document.getElementById('news-search')?.value || '').trim().toLowerCase();
+            const list = (appData.announcements || []).filter(n => !q
+                || n.text.toLowerCase().includes(q) || (n.author || '').toLowerCase().includes(q));
             const container = document.getElementById('news-container');
             if (list.length === 0) {
-                container.innerHTML = '<div class="toast-empty">Объявлений пока нет</div>';
+                container.innerHTML = '<div class="empty-state"><span class="empty-ico">📢</span>Объявлений пока нет</div>';
                 return;
             }
             container.innerHTML = list.map((n, i) => `
@@ -1757,6 +1987,8 @@ HTML_TEMPLATE = r"""
             initTilt();
             initParallax();
             initHaptics();
+            initRipple();
+            initPull();
             window.addEventListener('resize', () => {
                 moveInd('seg-main');
                 moveInd('seg-week');
@@ -1918,6 +2150,13 @@ def init_db():
         if "notified" not in cols:
             conn.execute("ALTER TABLE announcements ADD COLUMN notified INTEGER NOT NULL DEFAULT 0")
         conn.execute("DELETE FROM announcements WHERE date_key IS NULL")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS announcement_sends (
+                ann_id INTEGER NOT NULL,
+                slot_key TEXT NOT NULL,
+                PRIMARY KEY (ann_id, slot_key)
+            )
+        """)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS chats (
                 chat_id INTEGER PRIMARY KEY,
@@ -2194,15 +2433,22 @@ def add_announcement():
 
     author = first_name + (f" {last_name}" if last_name else "")
     created = get_now().strftime("%d.%m.%Y %H:%M")
+    now = get_now()
     with db_lock, get_db() as conn:
-        conn.execute(
+        cur = conn.execute(
             "INSERT INTO announcements (text, author, created_at, date_key, notified) VALUES (?, ?, ?, ?, 0)",
             (text, author, created, parsed_date.isoformat()),
         )
-    try:
-        notify_due_announcements()
-    except Exception as e:
-        log.error("Ошибка немедленной рассылки объявления: %s", e)
+        new_id = cur.lastrowid
+    # Окно рассылки уже прошло: дата сегодня, либо завтра и текущее время после 18:00
+    late = parsed_date == now.date() or (
+        parsed_date == now.date() + timedelta(days=1) and now.hour >= 18
+    )
+    if late:
+        try:
+            notify_due_announcements(only_id=new_id)
+        except Exception as e:
+            log.error("Ошибка немедленной рассылки объявления: %s", e)
     return jsonify({"status": "success"})
 
 
@@ -2353,7 +2599,7 @@ def send_schedule_to_groups():
 
 
 def send_announcement_to_groups(text, date_key):
-    shown = date.fromisoformat(date_key).strftime("%d.%m")
+    shown = date.fromisoformat(date_key).strftime("%d.%m.%Y")
     msg = f"📢 <b>Объявление на {shown}</b>\n\n{html.escape(text)}"
     sent = 0
     for chat_id in get_chats():
@@ -2370,20 +2616,70 @@ def send_announcement_to_groups(text, date_key):
     return sent
 
 
-def notify_due_announcements():
-    """Рассылка объявлений за день до даты или в день даты."""
+ANNOUNCE_HOURS = (12, 18)  # объявления уходят в группы в 12:00 и 18:00 по Минску
+ANNOUNCE_WINDOW_MIN = 30   # окно отправки: первые 30 минут после указанного часа
+
+
+def announcement_slot(now):
+    """Ключ текущего окна рассылки или None, если сейчас не 12:00 и не 18:00."""
+    if now.hour in ANNOUNCE_HOURS and now.minute < ANNOUNCE_WINDOW_MIN:
+        return f"{now.date().isoformat()}-{now.hour:02d}"
+    return None
+
+
+def was_sent(ann_id, slot_key):
+    with db_lock, get_db() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM announcement_sends WHERE ann_id = ? AND slot_key = ?",
+            (ann_id, slot_key),
+        ).fetchone()
+    return row is not None
+
+
+def mark_sent(ann_id, slot_key):
+    with db_lock, get_db() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO announcement_sends (ann_id, slot_key) VALUES (?, ?)",
+            (ann_id, slot_key),
+        )
+
+
+def notify_due_announcements(only_id=None):
+    """Рассылка объявлений в группы.
+    Обычный режим: в 12:00 и 18:00 по Минску уходят объявления, дата события которых ЗАВТРА.
+    only_id: разовая отправка одного объявления, когда окно уже прошло
+    (объявление на сегодня или на завтра, созданное после 18:00)."""
     now = get_now()
     today_iso = now.date().isoformat()
+
+    if only_id is not None:
+        with db_lock, get_db() as conn:
+            rows = conn.execute(
+                "SELECT id, text, date_key FROM announcements WHERE id = ?", (only_id,)
+            ).fetchall()
+        for row in rows:
+            if was_sent(row["id"], "instant"):
+                continue
+            send_announcement_to_groups(row["text"], row["date_key"])
+            mark_sent(row["id"], "instant")
+            # Помечаем оба окна сегодняшнего дня, чтобы не отправить повторно в 12:00 или 18:00
+            for hour in ANNOUNCE_HOURS:
+                mark_sent(row["id"], f"{today_iso}-{hour:02d}")
+        return
+
+    slot_key = announcement_slot(now)
+    if slot_key is None:
+        return
     tomorrow_iso = (now.date() + timedelta(days=1)).isoformat()
     with db_lock, get_db() as conn:
         rows = conn.execute(
-            "SELECT id, text, date_key FROM announcements WHERE notified = 0 AND date_key <= ?",
-            (tomorrow_iso,),
+            "SELECT id, text, date_key FROM announcements WHERE date_key = ?", (tomorrow_iso,)
         ).fetchall()
     for row in rows:
+        if was_sent(row["id"], slot_key):
+            continue
         send_announcement_to_groups(row["text"], row["date_key"])
-        with db_lock, get_db() as conn:
-            conn.execute("UPDATE announcements SET notified = 1 WHERE id = ?", (row["id"],))
+        mark_sent(row["id"], slot_key)
 
 
 def daily_scheduler():
